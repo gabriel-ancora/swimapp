@@ -1632,8 +1632,136 @@
   .donut-wrap {
     margin: 0 auto;
   }
+}
 
+@media (max-width: 640px) {
   .pool-split-box {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   Auth Screen, Team Manager & Athlete Analytics
+   ========================================================================== */
+
+.auth-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 14px;
+  background: var(--bg-canvas);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  padding: 24px;
+}
+
+.auth-brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.input-icon-wrap {
+  position: relative;
+}
+
+.input-icon-wrap svg {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-muted);
+  pointer-events: none;
+}
+
+.input-icon-wrap .input {
+  padding-left: 34px;
+}
+
+.auth-error {
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  border: 1px solid #fecaca;
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.color-swatch-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  padding: 0;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.color-swatch-btn.selected {
+  transform: scale(1.12);
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px var(--ink-primary);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid;
+}
+
+.status-ativo {
+  background: var(--success-soft);
+  color: var(--success);
+  border-color: #a7f3d0;
+}
+
+.status-recuperação {
+  background: #fffbeb;
+  color: #b45309;
+  border-color: #fde68a;
+}
+
+.status-inativo {
+  background: var(--bg-subtle);
+  color: var(--ink-muted);
+  border-color: var(--border-hairline);
+}
+
+.athlete-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.athlete-goal-box {
+  min-width: 240px;
+  flex: 0 1 320px;
+}
+
+@media (max-width: 640px) {
+  .auth-card {
+    padding: 18px 16px;
+  }
+
+  .athlete-goal-box {
+    width: 100%;
+    flex: 1 1 100%;
   }
 }

@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { Calendar, Copy, Edit3, Plus, Printer, Search, Trash2, Waves } from 'lucide-react';
 import type { CatalogDatabase, Workout } from '../types/swimming';
+import type { Athlete, CatalogDatabase, Workout } from '../types/swimming';
 import { computeWorkoutStats, formatDateBR, formatMeters } from '../utils/storage';
 
 interface MyWorkoutsProps {
   workouts: Workout[];
   catalog: CatalogDatabase;
+  athletes: Athlete[];
   onEdit: (workout: Workout) => void;
   onPrint: (workout: Workout) => void;
   onDuplicate: (workout: Workout) => void;
@@ -16,6 +18,7 @@ interface MyWorkoutsProps {
 export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
   workouts,
   catalog,
+  athletes,
   onEdit,
   onPrint,
   onDuplicate,
@@ -133,6 +136,25 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
                       </span>
                       <span>·</span>
                       <span>{wk.objective}</span>
+                      {wk.targetScope === 'categoria' && wk.targetCategory && (
+                        <>
+                          <span>·</span>
+                          <span className="db-chip">Grupo: {wk.targetCategory}</span>
+                        </>
+                      )}
+                      {wk.targetScope === 'atletas' &&
+                        wk.targetAthleteIds &&
+                        wk.targetAthleteIds.length > 0 && (
+                          <>
+                            <span>·</span>
+                            <span className="db-chip">
+                              Atletas:{' '}
+                              {wk.targetAthleteIds
+                                .map((id) => athletes.find((a) => a.id === id)?.name ?? 'Atleta')
+                                .join(', ')}
+                            </span>
+                          </>
+                        )}
                     </div>
                   </div>
                 </div>

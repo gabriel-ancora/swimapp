@@ -4,6 +4,13 @@ import { workoutItemValidator } from './schema';
 
 const workoutPayloadValidator = {
   id: v.string(),
+  coachId: v.optional(v.string()),
+  teamId: v.optional(v.string()),
+  targetScope: v.optional(
+    v.union(v.literal('equipe'), v.literal('categoria'), v.literal('atletas'))
+  ),
+  targetCategory: v.optional(v.string()),
+  targetAthleteIds: v.optional(v.array(v.string())),
   title: v.string(),
   date: v.string(),
   poolLength: v.union(v.literal(25), v.literal(50)),
@@ -15,9 +22,59 @@ const workoutPayloadValidator = {
   updatedAt: v.string(),
 };
 
+function mapWorkoutDoc(doc: {
+  clientId: string;
+  coachId?: string;
+  teamId?: string;
+  targetScope?: 'equipe' | 'categoria' | 'atletas';
+  targetCategory?: string;
+  targetAthleteIds?: string[];
+  title: string;
+  date: string;
+  poolLength: 25 | 50;
+  objective: string;
+  coach: string;
+  generalNotes: string;
+  items: Array<{
+    id: string;
+    block: 'aquecimento' | 'principal' | 'complementar';
+    reps: number;
+    distance: number;
+    seriesType: string;
+    interval: string;
+    zoneId: 'Z1' | 'Z2' | 'Z3' | 'Z4' | 'Z5' | 'VEL';
+    equipment: string[];
+    notes: string;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+}) {
+  return {
+    id: doc.clientId,
+    coachId: doc.coachId,
+    teamId: doc.teamId,
+    targetScope: doc.targetScope,
+    targetCategory: doc.targetCategory,
+    targetAthleteIds: doc.targetAthleteIds,
+    title: doc.title,
+    date: doc.date,
+    poolLength: doc.poolLength,
+    objective: doc.objective,
+    coach: doc.coach,
+    generalNotes: doc.generalNotes,
+    items: doc.items,
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+  };
+}
+
 export const list = query({
   args: {},
   handler: async (ctx) => {
+  args: {
+    coachId: v.optional(v.string()),
+  },
+  handler: async (ctx, { coachId }) => {
     const docs = await ctx.db.query('workouts').withIndex('by_updatedAt').order('desc').collect();
     return docs.map((doc) => ({
       id: doc.clientId,
@@ -31,6 +88,10 @@ export const list = query({
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     }));
+    const filtered = coachId
+      ? docs.filter((d) => !d.coachId || d.coachId === coachId)
+      : docs;
+    return filtered.map(mapWorkoutDoc);
   },
 });
 
@@ -46,6 +107,11 @@ export const upsert = mutation({
 
     const record = {
       clientId: workout.id,
+      coachId: workout.coachId,
+      teamId: workout.teamId,
+      targetScope: workout.targetScope,
+      targetCategory: workout.targetCategory,
+      targetAthleteIds: workout.targetAthleteIds,
       title: workout.title,
       date: workout.date,
       poolLength: workout.poolLength,

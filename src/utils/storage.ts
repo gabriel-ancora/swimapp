@@ -1,8 +1,11 @@
 import { DEFAULT_CATALOG, SAMPLE_WORKOUTS } from '../data/defaultDatabase';
 import type {
+  Athlete,
   BlockType,
   CatalogDatabase,
+  CoachProfile,
   IntensityZone,
+  Team,
   Workout,
   WorkoutItem,
   ZoneId,
@@ -10,6 +13,10 @@ import type {
 
 const CATALOG_KEY = 'raia_pro_catalog_v1';
 const WORKOUTS_KEY = 'raia_pro_workouts_v1';
+const SESSION_KEY = 'raia_pro_session_v1';
+const COACHES_KEY = 'raia_pro_coaches_v1';
+const TEAMS_KEY = 'raia_pro_teams_v1';
+const ATHLETES_KEY = 'raia_pro_athletes_v1';
 
 export function loadCatalog(): CatalogDatabase {
   try {
@@ -151,4 +158,81 @@ export function formatDateBR(isoDate: string): string {
   const parts = isoDate.split('-');
   if (parts.length !== 3) return isoDate;
   return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
+export function loadSession(): CoachProfile | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? (JSON.parse(raw) as CoachProfile) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveSession(coach: CoachProfile): void {
+  localStorage.setItem(SESSION_KEY, JSON.stringify(coach));
+}
+
+export function clearSession(): void {
+  localStorage.removeItem(SESSION_KEY);
+}
+
+export interface LocalCoachRecord extends CoachProfile {
+  passwordHash: string;
+}
+
+export async function hashPasswordClient(password: string): Promise<string> {
+  const data = new TextEncoder().encode(`raia_pro_salt_v1:${password}`);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+export function loadLocalCoaches(): LocalCoachRecord[] {
+  try {
+    const raw = localStorage.getItem(COACHES_KEY);
+    return raw ? (JSON.parse(raw) as LocalCoachRecord[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalCoaches(coaches: LocalCoachRecord[]): void {
+  localStorage.setItem(COACHES_KEY, JSON.stringify(coaches));
+}
+
+export function loadLocalTeams(): Team[] {
+  try {
+    const raw = localStorage.getItem(TEAMS_KEY);
+    return raw ? (JSON.parse(raw) as Team[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalTeams(teams: Team[]): void {
+  localStorage.setItem(TEAMS_KEY, JSON.stringify(teams));
+}
+
+export function loadLocalAthletes(): Athlete[] {
+  try {
+    const raw = localStorage.getItem(ATHLETES_KEY);
+    return raw ? (JSON.parse(raw) as Athlete[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalAthletes(athletes: Athlete[]): void {
+  localStorage.setItem(ATHLETES_KEY, JSON.stringify(athletes));
+}
+
+export function isWorkoutAssignedToAthlete(workout: Workout, athlete: Athlete): boolean {
+  if (workout.teamId && workout.teamId !== athlete.teamId) return false;
+  const scope = workout.targetScope ?? 'equipe';
+  if (scope === 'equipe') return true;
+  if (scope === 'categoria') return workout.targetCategory === athlete.category;
+  if (scope === 'atletas') return Boolean(workout.targetAthleteIds?.includes(athlete.id));
+  return false;
 }

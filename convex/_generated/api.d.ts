@@ -8,7 +8,10 @@
  * @module
  */
 
+import type * as athletes from "../athletes.js";
+import type * as auth from "../auth.js";
 import type * as catalog from "../catalog.js";
+import type * as teams from "../teams.js";
 import type * as workouts from "../workouts.js";
 
 import type {
@@ -18,7 +21,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  athletes: typeof athletes;
+  auth: typeof auth;
   catalog: typeof catalog;
+  teams: typeof teams;
   workouts: typeof workouts;
 }>;
 

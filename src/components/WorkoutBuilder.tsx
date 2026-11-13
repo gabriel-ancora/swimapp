@@ -12,6 +12,15 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { BlockType, CatalogDatabase, Workout, WorkoutItem } from '../types/swimming';
+import type {
+  Athlete,
+  BlockType,
+  CatalogDatabase,
+  Team,
+  Workout,
+  WorkoutItem,
+  WorkoutTargetScope,
+} from '../types/swimming';
 import { computeWorkoutStats, formatMeters, generateId, getItemMeters } from '../utils/storage';
 import { SeriesComposer } from './SeriesComposer';
 
@@ -19,6 +28,8 @@ interface WorkoutBuilderProps {
   draft: Workout;
   isEditingExisting: boolean;
   catalog: CatalogDatabase;
+  activeTeam: Team | null;
+  athletes: Athlete[];
   onChangeDraft: (updated: Workout) => void;
   onSaveWorkout: () => void;
   onPrintWorkout: () => void;
@@ -47,6 +58,8 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
   draft,
   isEditingExisting,
   catalog,
+  activeTeam,
+  athletes,
   onChangeDraft,
   onSaveWorkout,
   onPrintWorkout,
@@ -59,6 +72,28 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
 
   const updateField = <K extends keyof Workout>(field: K, value: Workout[K]) => {
     onChangeDraft({ ...draft, [field]: value });
+  };
+
+  const currentScope: WorkoutTargetScope = draft.targetScope ?? 'equipe';
+
+  const handleScopeChange = (scope: WorkoutTargetScope) => {
+    onChangeDraft({
+      ...draft,
+      targetScope: scope,
+      targetCategory:
+        scope === 'categoria'
+          ? draft.targetCategory || activeTeam?.categories[0] || ''
+          : undefined,
+      targetAthleteIds: scope === 'atletas' ? draft.targetAthleteIds ?? [] : undefined,
+    });
+  };
+
+  const toggleTargetAthlete = (athleteId: string) => {
+    const current = draft.targetAthleteIds ?? [];
+    const next = current.includes(athleteId)
+      ? current.filter((id) => id !== athleteId)
+      : [...current, athleteId];
+    onChangeDraft({ ...draft, targetAthleteIds: next });
   };
 
   const handleSaveItem = (item: WorkoutItem) => {
@@ -217,6 +252,75 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                     placeholder="Nome do treinador(a)"
                   />
                 </div>
+
+                {activeTeam && (
+                  <div className="field col-12">
+                    <label>Direcionamento do Treino ({activeTeam.name})</label>
+                    <div className="segmented" style={{ marginBottom: 8 }}>
+                      <button
+                        type="button"
+                        className={currentScope === 'equipe' ? 'active' : ''}
+                        onClick={() => handleScopeChange('equipe')}
+                      >
+                        Toda a Equipe
+                      </button>
+                      <button
+                        type="button"
+                        className={currentScope === 'categoria' ? 'active' : ''}
+                        onClick={() => handleScopeChange('categoria')}
+                      >
+                        Grupo / Categoria
+                      </button>
+                      <button
+                        type="button"
+                        className={currentScope === 'atletas' ? 'active' : ''}
+                        onClick={() => handleScopeChange('atletas')}
+                      >
+                        Atletas Específicos
+                      </button>
+                    </div>
+
+                    {currentScope === 'categoria' && (
+                      <select
+                        className="select"
+                        value={draft.targetCategory ?? activeTeam.categories[0] ?? ''}
+                        onChange={(e) => updateField('targetCategory', e.target.value)}
+                      >
+                        {activeTeam.categories.map((cat) => (
+                          <option key={cat} value={cat}>
+                            Grupo: {cat}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    {currentScope === 'atletas' && (
+                      <div>
+                        {athletes.length === 0 ? (
+                          <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+                            Nenhum atleta cadastrado na equipe ainda.
+                          </span>
+                        ) : (
+                          <div className="chip-row">
+                            {athletes.map((ath) => {
+                              const selected = Boolean(draft.targetAthleteIds?.includes(ath.id));
+                              return (
+                                <button
+                                  key={ath.id}
+                                  type="button"
+                                  className={`chip-btn ${selected ? 'selected' : ''}`}
+                                  onClick={() => toggleTargetAthlete(ath.id)}
+                                >
+                                  {ath.name} ({ath.category})
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="field col-12">
                   <label>Observações Gerais do Treino</label>

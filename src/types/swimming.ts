@@ -45,8 +45,52 @@ export interface WorkoutItem {
   notes: string;
 }
 
+export type AthleteStatus = 'Ativo' | 'Recuperação' | 'Inativo';
+
+export interface CoachProfile {
+  id: string;
+  name: string;
+  email: string;
+  cref: string;
+  specialty: string;
+  createdAt: string;
+}
+
+export interface Team {
+  id: string;
+  coachId: string;
+  name: string;
+  club: string;
+  accentColor: string;
+  categories: string[];
+  weeklyVolumeGoalMeters: number;
+  weeklySessionsGoal: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Athlete {
+  id: string;
+  teamId: string;
+  name: string;
+  category: string;
+  mainEvent: string;
+  bestTime: string;
+  status: AthleteStatus;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type WorkoutTargetScope = 'equipe' | 'categoria' | 'atletas';
+
 export interface Workout {
   id: string;
+  coachId?: string;
+  teamId?: string;
+  targetScope?: WorkoutTargetScope;
+  targetCategory?: string;
+  targetAthleteIds?: string[];
   title: string;
   date: string;
   poolLength: 25 | 50;
@@ -59,3 +103,4 @@ export interface Workout {
 }
 
 export type ActiveTab = 'novo' | 'treinos' | 'painel' | 'base';
+export type ActiveTab = 'novo' | 'treinos' | 'painel' | 'atletas' | 'equipe' | 'base';

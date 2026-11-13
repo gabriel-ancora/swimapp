@@ -11,6 +11,7 @@
 import type * as athletes from "../athletes.js";
 import type * as auth from "../auth.js";
 import type * as catalog from "../catalog.js";
+import type * as plans from "../plans.js";
 import type * as teams from "../teams.js";
 import type * as workouts from "../workouts.js";
 
@@ -24,6 +25,7 @@ declare const fullApi: ApiFromModules<{
   athletes: typeof athletes;
   auth: typeof auth;
   catalog: typeof catalog;
+  plans: typeof plans;
   teams: typeof teams;
   workouts: typeof workouts;
 }>;

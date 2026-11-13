@@ -195,16 +195,16 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
     if (period === '7d') return 7;
     if (period === '30d') return 30;
     if (period === '90d') return 90;
-    if (periodWorkouts.length === 0) return 7;
+    if (periodWorkouts.length === 0) return 0;
     const dates = periodWorkouts
       .map((w) => w.date)
       .filter(Boolean)
       .sort();
-    if (dates.length === 0) return 7;
+    if (dates.length === 0) return 0;
     const first = new Date(`${dates[0]}T00:00:00`);
-    if (Number.isNaN(first.getTime())) return 7;
+    if (Number.isNaN(first.getTime())) return 0;
     const diff = Math.floor((todayRef.getTime() - first.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    return Math.max(7, diff);
+    return Math.max(1, diff);
   }, [period, periodWorkouts, todayRef]);
 
   // Statistical summary for every athlete in the roster

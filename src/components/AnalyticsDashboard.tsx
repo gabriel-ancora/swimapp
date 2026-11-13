@@ -406,8 +406,8 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           </div>
           <p style={{ margin: '0 0 16px 0', color: 'var(--ink-secondary)', fontSize: 13 }}>
             {workouts.length === 0
-              ? 'Cadastre seu primeiro treino para visualizar os gráficos e indicadores reais.'
-              : 'Ajuste o período, piscina, técnico ou objetivo para analisar os treinos cadastrados.'}
+              ? 'Nenhum treino concluído ainda. Marque os treinos como concluídos na aba Treinos para contabilizá-los no painel.'
+              : 'Ajuste o período, piscina, técnico ou objetivo para analisar os treinos concluídos.'}
           </p>
           {workouts.length === 0 && (
             <button type="button" className="btn btn-primary" onClick={onCreateNew}>

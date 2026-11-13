@@ -2215,3 +2215,247 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Workout Completed Checkbox */
+.workout-card-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.workout-completed-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-hairline);
+  background: var(--bg-canvas);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-secondary);
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+  transition: all 0.14s ease;
+}
+
+.workout-completed-check input[type='checkbox'] {
+  accent-color: #059669;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.workout-completed-check.checked {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #047857;
+}
+
+.workout-card-completed {
+  border-color: #a7f3d0;
+}
+
+
+/* Absence selector on workout cards */
+.workout-absence-wrap {
+  margin-top: 2px;
+}
+
+.workout-absence-wrap .btn.has-absences {
+  color: #b91c1c;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.workout-absence-panel {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-hairline);
+}
+
+.workout-absence-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin-bottom: 6px;
+}
+
+.chip-btn.absent-selected {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+  font-weight: 700;
+}
+
+/* Athlete Physical State Prediction & Rest/Attendance */
+.readiness-grid {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.readiness-card {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-left: 4px solid var(--accent-primary);
+}
+
+.readiness-card.tone-optimal {
+  border-left-color: #059669;
+}
+
+.readiness-card.tone-fresh {
+  border-left-color: #0d9488;
+}
+
+.readiness-card.tone-moderate {
+  border-left-color: #0057ff;
+}
+
+.readiness-card.tone-fatigue {
+  border-left-color: #dc2626;
+}
+
+.readiness-card.tone-detraining {
+  border-left-color: #d97706;
+}
+
+.readiness-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.readiness-score {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--ink-primary);
+  line-height: 1;
+}
+
+.readiness-score span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.readiness-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid;
+}
+
+.readiness-badge.tone-optimal {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #a7f3d0;
+}
+
+.readiness-badge.tone-fresh {
+  background: #f0fdfa;
+  color: #0f766e;
+  border-color: #99f6e4;
+}
+
+.readiness-badge.tone-moderate {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+.readiness-badge.tone-fatigue {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+.readiness-badge.tone-detraining {
+  background: #fffbeb;
+  color: #b45309;
+  border-color: #fde68a;
+}
+
+.readiness-summary {
+  margin: 10px 0 8px 0;
+  font-size: 13px;
+  color: var(--ink-primary);
+}
+
+.readiness-rec {
+  font-size: 12px;
+  color: var(--ink-secondary);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-hairline);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.readiness-mini-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.missed-workouts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.missed-workout-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 980px) {
+  .readiness-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .readiness-mini-kpis {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* Quick inline athlete creation inside WorkoutBuilder & PlanningManager */
+.quick-athlete-box {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1.2fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-hairline);
+}
+
+@media (max-width: 720px) {
+  .quick-athlete-box {
+    grid-template-columns: 1fr;
+  }
+}

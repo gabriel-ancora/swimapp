@@ -270,6 +270,7 @@ function AppShell({
       id: generateId('wk'),
       coachId: coach.id,
       teamId: activeTeam?.id ?? workout.teamId,
+      completed: false,
       title: `${workout.title} (Cópia)`,
       createdAt: now,
       updatedAt: now,
@@ -291,6 +292,42 @@ function AppShell({
     showToast('Treino excluído.');
   };
 
+  const handleToggleWorkoutCompleted = async (workout: Workout) => {
+    const nextCompleted = !workout.completed;
+    const updated: Workout = {
+      ...workout,
+      completed: nextCompleted,
+      updatedAt: new Date().toISOString(),
+    };
+    await onPersistWorkout(updated, true);
+    if (editingId === workout.id) {
+      setDraft(updated);
+    }
+    showToast(
+      nextCompleted
+        ? 'Treino marcado como concluído e contabilizado nos painéis.'
+        : 'Treino marcado como pendente.'
+    );
+  };
+
+  const handleToggleAthleteAbsence = async (workout: Workout, athleteId: string) => {
+    const current = workout.absentAthleteIds ?? [];
+    const isAbsent = current.includes(athleteId);
+    const nextAbsent = isAbsent
+      ? current.filter((id) => id !== athleteId)
+      : [...current, athleteId];
+    const updated: Workout = {
+      ...workout,
+      absentAthleteIds: nextAbsent,
+      updatedAt: new Date().toISOString(),
+    };
+    await onPersistWorkout(updated, true);
+    if (editingId === workout.id) {
+      setDraft(updated);
+    }
+    showToast(isAbsent ? 'Presença restaurada para o atleta.' : 'Falta registrada para o atleta.');
+  };
+
   const handleCreateWorkoutFromPlan = (plan: TrainingPlan, phase?: PeriodizationPhase) => {
     const base = createEmptyWorkout(catalog, coach, activeTeam);
     setEditingId(null);
@@ -306,8 +343,8 @@ function AppShell({
       targetScope: plan.targetScope,
       targetCategory: plan.targetScope === 'categoria' ? plan.targetCategory : undefined,
       targetAthleteIds:
-        plan.targetScope === 'atletas' && plan.targetAthleteId
-          ? [plan.targetAthleteId]
+        plan.targetScope === 'atletas'
+          ? plan.targetAthleteIds ?? (plan.targetAthleteId ? [plan.targetAthleteId] : undefined)
           : undefined,
       title: phase ? `${plan.title} — ${phase.name}` : plan.title,
       generalNotes: phase?.focus ? `Foco da fase: ${phase.focus}` : '',
@@ -437,6 +474,10 @@ function AppShell({
               onPrintWorkout={() => handlePrint(draft)}
               onResetDraft={handleResetDraft}
               onGoToPlanning={() => setActiveTab('planejamento')}
+              onQuickAddAthlete={async (ath) => {
+                await onSaveAthlete(ath);
+                showToast('Atleta adicionado à equipe.');
+              }}
             />
           )}
 
@@ -457,6 +498,10 @@ function AppShell({
                 showToast('Planejamento removido.');
               }}
               onCreateWorkoutFromPlan={handleCreateWorkoutFromPlan}
+              onQuickAddAthlete={async (ath) => {
+                await onSaveAthlete(ath);
+                showToast('Atleta adicionado à equipe.');
+              }}
             />
           )}
 
@@ -469,6 +514,8 @@ function AppShell({
               onPrint={handlePrint}
               onDuplicate={handleDuplicateWorkout}
               onDelete={handleDeleteWorkout}
+              onToggleCompleted={handleToggleWorkoutCompleted}
+              onToggleAthleteAbsence={handleToggleAthleteAbsence}
               onCreateNew={() => {
                 handleResetDraft();
                 setActiveTab('novo');
@@ -478,7 +525,7 @@ function AppShell({
 
           {activeTab === 'painel' && (
             <AnalyticsDashboard
-              workouts={workouts}
+              workouts={workouts.filter((w) => Boolean(w.completed))}
               catalog={catalog}
               onEditWorkout={handleEditFromList}
               onCreateNew={() => {
@@ -492,10 +539,11 @@ function AppShell({
             <AthleteAnalytics
               activeTeam={activeTeam}
               athletes={athletes}
-              workouts={workouts}
+              workouts={workouts.filter((w) => Boolean(w.completed))}
               plans={plans}
               catalog={catalog}
               onEditWorkout={handleEditFromList}
+              onToggleAthleteAbsence={handleToggleAthleteAbsence}
               onGoToTeam={() => setActiveTab('equipe')}
             />
           )}

@@ -125,6 +125,7 @@ export interface TrainingPlan {
   targetScope: WorkoutTargetScope;
   targetCategory?: string;
   targetAthleteId?: string;
+  targetAthleteIds?: string[];
   targetEvent?: string;
   targetTime?: string;
   competitionName?: string;
@@ -151,6 +152,8 @@ export interface Workout {
   targetCompetition?: string;
   targetEvent?: string;
   targetTime?: string;
+  completed?: boolean;
+  absentAthleteIds?: string[];
   title: string;
   date: string;
   poolLength: 25 | 50;

@@ -17,6 +17,8 @@ const workoutPayloadValidator = {
   targetCompetition: v.optional(v.string()),
   targetEvent: v.optional(v.string()),
   targetTime: v.optional(v.string()),
+  completed: v.optional(v.boolean()),
+  absentAthleteIds: v.optional(v.array(v.string())),
   title: v.string(),
   date: v.string(),
   poolLength: v.union(v.literal(25), v.literal(50)),
@@ -41,6 +43,8 @@ function mapWorkoutDoc(doc: {
   targetCompetition?: string;
   targetEvent?: string;
   targetTime?: string;
+  completed?: boolean;
+  absentAthleteIds?: string[];
   title: string;
   date: string;
   poolLength: 25 | 50;
@@ -74,6 +78,8 @@ function mapWorkoutDoc(doc: {
     targetCompetition: doc.targetCompetition,
     targetEvent: doc.targetEvent,
     targetTime: doc.targetTime,
+    completed: doc.completed,
+    absentAthleteIds: doc.absentAthleteIds,
     title: doc.title,
     date: doc.date,
     poolLength: doc.poolLength,
@@ -122,6 +128,8 @@ export const upsert = mutation({
       targetCompetition: workout.targetCompetition,
       targetEvent: workout.targetEvent,
       targetTime: workout.targetTime,
+      completed: workout.completed,
+      absentAthleteIds: workout.absentAthleteIds,
       title: workout.title,
       date: workout.date,
       poolLength: workout.poolLength,

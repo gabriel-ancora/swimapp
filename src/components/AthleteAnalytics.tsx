@@ -3,10 +3,14 @@ import {
   Activity,
   Award,
   BarChart3,
+  BatteryCharging,
   Clock,
   Flame,
+  Moon,
   Target,
   TrendingUp,
+  UserCheck,
+  UserX,
   Users,
   Waves,
 } from 'lucide-react';
@@ -34,10 +38,101 @@ interface AthleteAnalyticsProps {
   plans?: TrainingPlan[];
   catalog: CatalogDatabase;
   onEditWorkout: (workout: Workout) => void;
+  onToggleAthleteAbsence?: (workout: Workout, athleteId: string) => void;
   onGoToTeam: () => void;
 }
 
 type PeriodFilter = '7d' | '30d' | '90d' | 'all';
+
+interface PhysicalStatePrediction {
+  score: number;
+  label: string;
+  tone: 'optimal' | 'fresh' | 'moderate' | 'fatigue' | 'detraining';
+  summary: string;
+  recommendation: string;
+}
+
+function predictPhysicalState(params: {
+  sessionCount: number;
+  restDays: number;
+  periodDays: number;
+  daysSinceLastWorkout: number | null;
+  regenerativePct: number;
+  lightSessionsCount: number;
+  highPct: number;
+  missedCount: number;
+}): PhysicalStatePrediction {
+  const {
+    sessionCount,
+    restDays,
+    periodDays,
+    daysSinceLastWorkout,
+    regenerativePct,
+    lightSessionsCount,
+    highPct,
+    missedCount,
+  } = params;
+
+  const restRatio = periodDays > 0 ? restDays / periodDays : 1;
+
+  if (sessionCount === 0) {
+    return {
+      score: 65,
+      label: 'Sem Carga Registrada',
+      tone: 'detraining',
+      summary: `${restDays} dias de descanso no período${missedCount > 0 ? ` (${missedCount} falta(s))` : ''}, sem sessões concluídas.`,
+      recommendation: 'Retomada gradual com séries aeróbicas leves (Z1/Z2) para readaptação.',
+    };
+  }
+
+  if (daysSinceLastWorkout !== null && daysSinceLastWorkout >= 6) {
+    return {
+      score: 68,
+      label: 'Descanso Prolongado / Retomada',
+      tone: 'detraining',
+      summary: `Último treino há ${daysSinceLastWorkout} dias (${restDays}d de descanso no período). Musculatura descansada, possível perda leve de ritmo.`,
+      recommendation: 'Iniciar com sessão progressiva em Z1/Z2 e estímulos curtos de sensibilidade na água.',
+    };
+  }
+
+  if (highPct >= 35 && restRatio < 0.25 && regenerativePct < 35) {
+    return {
+      score: 48,
+      label: 'Fadiga Acumulada / Sobrecarga',
+      tone: 'fatigue',
+      summary: `Alta intensidade (${highPct}% em Z4–VEL) com pouco descanso (${restDays}d) e baixo volume regenerativo (${regenerativePct}% em Z1/Z2).`,
+      recommendation: 'Priorizar 1 dia de descanso ou treino regenerativo/fraco (Z1/Z2) para evitar overtraining.',
+    };
+  }
+
+  if (regenerativePct >= 65 || lightSessionsCount >= Math.ceil(sessionCount * 0.6) || restRatio >= 0.55) {
+    return {
+      score: 88,
+      label: 'Recuperado / Fresco',
+      tone: 'fresh',
+      summary: `Boa reserva de recuperação (${restDays}d de descanso · ${regenerativePct}% do volume em Z1/Z2 regenerativo/leve).`,
+      recommendation: 'Excelente janela para aplicar séries principais mais intensas (Z3–Z5) ou ritmo de prova.',
+    };
+  }
+
+  if (restRatio >= 0.25 && highPct <= 35) {
+    return {
+      score: 84,
+      label: 'Pronto para Alta Performance',
+      tone: 'optimal',
+      summary: `Equilíbrio ideal entre estímulo e recuperação (${restDays}d de descanso · ${regenerativePct}% em Z1/Z2 · ${highPct}% Z4–VEL).`,
+      recommendation: 'Manter a periodização planejada; atleta apto para treinos-chave e testes de parcial.',
+    };
+  }
+
+  return {
+    score: 72,
+    label: 'Carga Moderada / Estável',
+    tone: 'moderate',
+    summary: `Ritmo contínuo com ${sessionCount} sessões, ${restDays}d de descanso e ${regenerativePct}% de volume leve (Z1/Z2).`,
+    recommendation: 'Alternar sessões fortes com estímulos regenerativos em Z1/Z2 nos próximos dias.',
+  };
+}
 
 function computeStdDev(values: number[]): number {
   if (values.length <= 1) return 0;
@@ -53,6 +148,7 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
   plans = [],
   catalog,
   onEditWorkout,
+  onToggleAthleteAbsence,
   onGoToTeam,
 }) => {
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>(
@@ -95,43 +191,104 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   }, [workouts, period, todayRef]);
 
+  const periodDays = useMemo(() => {
+    if (period === '7d') return 7;
+    if (period === '30d') return 30;
+    if (period === '90d') return 90;
+    if (periodWorkouts.length === 0) return 7;
+    const dates = periodWorkouts
+      .map((w) => w.date)
+      .filter(Boolean)
+      .sort();
+    if (dates.length === 0) return 7;
+    const first = new Date(`${dates[0]}T00:00:00`);
+    if (Number.isNaN(first.getTime())) return 7;
+    const diff = Math.floor((todayRef.getTime() - first.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    return Math.max(7, diff);
+  }, [period, periodWorkouts, todayRef]);
+
   // Statistical summary for every athlete in the roster
   const rosterStats = useMemo(() => {
     return filteredRoster.map((athlete) => {
       const assigned = periodWorkouts.filter((w) => isWorkoutAssignedToAthlete(w, athlete));
+      const attended = assigned.filter((w) => !w.absentAthleteIds?.includes(athlete.id));
+      const missed = assigned.filter((w) => Boolean(w.absentAthleteIds?.includes(athlete.id)));
+
       const volumes: number[] = [];
       let totalMeters = 0;
       let totalMinutes = 0;
       let highIntensityMeters = 0;
+      let regenerativeMeters = 0;
+      let lightSessionsCount = 0;
+      const trainedDates = new Set<string>();
 
-      for (const wk of assigned) {
+      for (const wk of attended) {
+        if (wk.date) trainedDates.add(wk.date);
         const st = computeWorkoutStats(wk.items, catalog.zones);
         volumes.push(st.totalMeters);
         totalMeters += st.totalMeters;
         totalMinutes += st.estimatedMinutes;
+        let wkHigh = 0;
         for (const z of st.byZone) {
           if (z.zone.id === 'Z4' || z.zone.id === 'Z5' || z.zone.id === 'VEL') {
             highIntensityMeters += z.meters;
+            wkHigh += z.meters;
           }
+          if (z.zone.id === 'Z1' || z.zone.id === 'Z2') {
+            regenerativeMeters += z.meters;
+          }
+        }
+        if (st.totalMeters > 0 && wkHigh / st.totalMeters <= 0.15) {
+          lightSessionsCount += 1;
         }
       }
 
-      const sessions = assigned.length;
+      const sessions = attended.length;
       const avgMeters = sessions > 0 ? Math.round(totalMeters / sessions) : 0;
       const stdDev = computeStdDev(volumes);
       const highPct = totalMeters > 0 ? Math.round((highIntensityMeters / totalMeters) * 100) : 0;
+      const regenerativePct =
+        totalMeters > 0 ? Math.round((regenerativeMeters / totalMeters) * 100) : 0;
+      const restDays = Math.max(0, periodDays - trainedDates.size);
+
+      const sortedDates = Array.from(trainedDates).sort();
+      const lastDateStr = sortedDates[sortedDates.length - 1];
+      let daysSinceLastWorkout: number | null = null;
+      if (lastDateStr) {
+        const lastD = new Date(`${lastDateStr}T00:00:00`);
+        if (!Number.isNaN(lastD.getTime())) {
+          daysSinceLastWorkout = Math.max(
+            0,
+            Math.floor((todayRef.getTime() - lastD.getTime()) / (1000 * 60 * 60 * 24))
+          );
+        }
+      }
+
+      const physicalState = predictPhysicalState({
+        sessionCount: sessions,
+        restDays,
+        periodDays,
+        daysSinceLastWorkout,
+        regenerativePct,
+        lightSessionsCount,
+        highPct,
+        missedCount: missed.length,
+      });
 
       return {
         athlete,
         sessions,
+        missedCount: missed.length,
+        restDays,
         totalMeters,
         totalMinutes,
         avgMeters,
         stdDev,
         highPct,
+        physicalState,
       };
     });
-  }, [filteredRoster, periodWorkouts, catalog.zones]);
+  }, [filteredRoster, periodWorkouts, catalog.zones, periodDays, todayRef]);
 
   // Deep-dive analytics for the selected athlete
   const athleteDetail = useMemo(() => {
@@ -140,12 +297,19 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
     const assigned = periodWorkouts.filter((w) =>
       isWorkoutAssignedToAthlete(w, effectiveAthlete)
     );
+    const attended = assigned.filter((w) => !w.absentAthleteIds?.includes(effectiveAthlete.id));
+    const missedWorkouts = assigned.filter((w) =>
+      Boolean(w.absentAthleteIds?.includes(effectiveAthlete.id))
+    );
 
     let totalMeters = 0;
     let totalMinutes = 0;
     let totalReps = 0;
     let highIntensityMeters = 0;
+    let regenerativeMeters = 0;
+    let lightSessionsCount = 0;
     const volumes: number[] = [];
+    const trainedDates = new Set<string>();
 
     const zoneMeters: Record<ZoneId, number> = {
       Z1: 0,
@@ -174,7 +338,8 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
       highPct: number;
     }> = [];
 
-    for (const wk of assigned) {
+    for (const wk of attended) {
+      if (wk.date) trainedDates.add(wk.date);
       const stats = computeWorkoutStats(wk.items, catalog.zones);
       totalMeters += stats.totalMeters;
       totalMinutes += stats.estimatedMinutes;
@@ -191,6 +356,9 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
         if (item.zoneId === 'Z4' || item.zoneId === 'Z5' || item.zoneId === 'VEL') {
           highIntensityMeters += m;
           wkHigh += m;
+        }
+        if (item.zoneId === 'Z1' || item.zoneId === 'Z2') {
+          regenerativeMeters += m;
         }
 
         const prevStyle = styleMap.get(item.seriesType) ?? {
@@ -210,6 +378,10 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
         }
       }
 
+      if (stats.totalMeters > 0 && wkHigh / stats.totalMeters <= 0.15) {
+        lightSessionsCount += 1;
+      }
+
       sessions.push({
         workout: wk,
         stats,
@@ -217,12 +389,45 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
       });
     }
 
-    const sessionCount = assigned.length;
+    const sessionCount = attended.length;
+    const totalAssignedCount = assigned.length;
+    const attendanceRate =
+      totalAssignedCount > 0 ? Math.round((sessionCount / totalAssignedCount) * 100) : 100;
     const avgMeters = sessionCount > 0 ? Math.round(totalMeters / sessionCount) : 0;
     const stdDev = computeStdDev(volumes);
     const highPct = totalMeters > 0 ? Math.round((highIntensityMeters / totalMeters) * 100) : 0;
     const aerobicPct = totalMeters > 0 ? 100 - highPct : 0;
+    const regenerativePct =
+      totalMeters > 0 ? Math.round((regenerativeMeters / totalMeters) * 100) : 0;
     const maxSessionMeters = volumes.reduce((m, v) => Math.max(m, v), 0);
+
+    const trainedDays = trainedDates.size;
+    const restDays = Math.max(0, periodDays - trainedDays);
+    const restRatioPct = periodDays > 0 ? Math.round((restDays / periodDays) * 100) : 0;
+
+    const sortedDates = Array.from(trainedDates).sort();
+    const lastDateStr = sortedDates[sortedDates.length - 1];
+    let daysSinceLastWorkout: number | null = null;
+    if (lastDateStr) {
+      const lastD = new Date(`${lastDateStr}T00:00:00`);
+      if (!Number.isNaN(lastD.getTime())) {
+        daysSinceLastWorkout = Math.max(
+          0,
+          Math.floor((todayRef.getTime() - lastD.getTime()) / (1000 * 60 * 60 * 24))
+        );
+      }
+    }
+
+    const physicalState = predictPhysicalState({
+      sessionCount,
+      restDays,
+      periodDays,
+      daysSinceLastWorkout,
+      regenerativePct,
+      lightSessionsCount,
+      highPct,
+      missedCount: missedWorkouts.length,
+    });
 
     const byZone = catalog.zones.map((zone) => {
       const meters = zoneMeters[zone.id] || 0;
@@ -237,6 +442,18 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
     return {
       athlete: effectiveAthlete,
       sessionCount,
+      totalAssignedCount,
+      attendanceRate,
+      missedWorkouts,
+      trainedDays,
+      restDays,
+      restRatioPct,
+      periodDays,
+      daysSinceLastWorkout,
+      regenerativeMeters,
+      regenerativePct,
+      lightSessionsCount,
+      physicalState,
       totalMeters,
       totalMinutes,
       totalReps,
@@ -251,7 +468,7 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
       equipment,
       sessions,
     };
-  }, [effectiveAthlete, periodWorkouts, catalog.zones]);
+  }, [effectiveAthlete, periodWorkouts, catalog.zones, periodDays, todayRef]);
 
   const donutSegments = useMemo(() => {
     if (!athleteDetail) return [];
@@ -447,7 +664,8 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
                     (p.targetScope === 'categoria' &&
                       p.targetCategory === athleteDetail.athlete.category) ||
                     (p.targetScope === 'atletas' &&
-                      p.targetAthleteId === athleteDetail.athlete.id))
+                      (p.targetAthleteIds?.includes(athleteDetail.athlete.id) ||
+                        p.targetAthleteId === athleteDetail.athlete.id)))
               ).length > 0 && (
                 <div className="athlete-goal-box">
                   <div className="metric-label" style={{ marginBottom: 6 }}>
@@ -479,6 +697,131 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
             </div>
           </div>
 
+          {/* Physical State Prediction & Rest/Attendance Overview */}
+          <div className="readiness-grid" style={{ marginBottom: 16 }}>
+            <section className={`surface-card readiness-card tone-${athleteDetail.physicalState.tone}`}>
+              <div className="readiness-top">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <BatteryCharging size={18} />
+                  <span className="metric-label" style={{ margin: 0 }}>
+                    Previsão de Estado Físico
+                  </span>
+                  <span className={`readiness-badge tone-${athleteDetail.physicalState.tone}`}>
+                    {athleteDetail.physicalState.label}
+                  </span>
+                </div>
+                <div className="readiness-score mono-num">
+                  {athleteDetail.physicalState.score}
+                  <span>/100</span>
+                </div>
+              </div>
+              <p className="readiness-summary">{athleteDetail.physicalState.summary}</p>
+              <div className="readiness-rec">
+                <strong>Recomendação:</strong> {athleteDetail.physicalState.recommendation}
+              </div>
+            </section>
+
+            <div className="readiness-mini-kpis">
+              <div className="surface-card kpi-card">
+                <div className="kpi-top">
+                  <span className="metric-label">Dias de Descanso</span>
+                  <Moon size={15} style={{ color: '#6366f1' }} />
+                </div>
+                <div className="kpi-value mono-num">{athleteDetail.restDays}d</div>
+                <div className="kpi-sub">
+                  {athleteDetail.restRatioPct}% dos {athleteDetail.periodDays}d ·{' '}
+                  {athleteDetail.daysSinceLastWorkout === null
+                    ? 'Sem treino recente'
+                    : athleteDetail.daysSinceLastWorkout === 0
+                      ? 'Treinou hoje'
+                      : `Último há ${athleteDetail.daysSinceLastWorkout}d`}
+                </div>
+              </div>
+
+              <div className="surface-card kpi-card">
+                <div className="kpi-top">
+                  <span className="metric-label">Presença & Faltas</span>
+                  <UserCheck size={15} style={{ color: '#059669' }} />
+                </div>
+                <div className="kpi-value mono-num">{athleteDetail.attendanceRate}%</div>
+                <div className="kpi-sub">
+                  {athleteDetail.sessionCount} realizados ·{' '}
+                  <span
+                    style={{
+                      color: athleteDetail.missedWorkouts.length > 0 ? '#dc2626' : undefined,
+                      fontWeight: athleteDetail.missedWorkouts.length > 0 ? 700 : undefined,
+                    }}
+                  >
+                    {athleteDetail.missedWorkouts.length}{' '}
+                    {athleteDetail.missedWorkouts.length === 1 ? 'falta' : 'faltas'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="surface-card kpi-card">
+                <div className="kpi-top">
+                  <span className="metric-label">Regenerativo / Fraco</span>
+                  <Activity size={15} style={{ color: '#0d9488' }} />
+                </div>
+                <div className="kpi-value mono-num">{athleteDetail.regenerativePct}%</div>
+                <div className="kpi-sub">
+                  {formatMeters(athleteDetail.regenerativeMeters)} em Z1/Z2 ·{' '}
+                  {athleteDetail.lightSessionsCount} sessões leves
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {athleteDetail.missedWorkouts.length > 0 && (
+            <section className="surface-card" style={{ marginBottom: 16 }}>
+              <div className="card-header">
+                <h2 className="card-title" style={{ color: '#b91c1c' }}>
+                  <UserX size={15} /> Treinos em que Não Compareceu (
+                  {athleteDetail.missedWorkouts.length})
+                </h2>
+              </div>
+              <div className="card-section" style={{ paddingTop: 10, paddingBottom: 10 }}>
+                <div className="missed-workouts-list">
+                  {athleteDetail.missedWorkouts.map((wk) => {
+                    const st = computeWorkoutStats(wk.items, catalog.zones);
+                    return (
+                      <div key={wk.id} className="missed-workout-row">
+                        <div>
+                          <strong style={{ fontSize: 13 }}>{wk.title || 'Treino Sem Título'}</strong>
+                          <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
+                            <span className="mono-num">{formatDateBR(wk.date)}</span> ·{' '}
+                            {wk.objective} ·{' '}
+                            <span className="mono-num">{formatMeters(st.totalMeters)}</span>
+                          </div>
+                        </div>
+                        <div className="series-actions">
+                          {onToggleAthleteAbsence && (
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              onClick={() =>
+                                onToggleAthleteAbsence(wk, athleteDetail.athlete.id)
+                              }
+                            >
+                              Marcar Presença
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => onEditWorkout(wk)}
+                          >
+                            Ver Treino
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+          )}
+
           {athleteDetail.sessionCount === 0 ? (
             <div
               className="surface-card card-section"
@@ -486,11 +829,12 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
             >
               <BarChart3 size={28} style={{ color: 'var(--ink-muted)', marginBottom: 8 }} />
               <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
-                Nenhum treino atribuído a {athleteDetail.athlete.name} neste período
+                Nenhum treino concluído atribuído a {athleteDetail.athlete.name} neste período
               </div>
               <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-secondary)' }}>
-                Crie um treino direcionado para toda a equipe, para o grupo{' '}
-                <strong>{athleteDetail.athlete.category}</strong> ou diretamente para este atleta.
+                Apenas treinos marcados como concluídos são contabilizados nos painéis. Crie ou
+                conclua um treino direcionado para a equipe, grupo{' '}
+                <strong>{athleteDetail.athlete.category}</strong> ou para este atleta.
               </p>
             </div>
           ) : (
@@ -782,12 +1126,13 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
                   <tr>
                     <th>Atleta</th>
                     <th>Categoria</th>
-                    <th>Prova</th>
                     <th>Sessões</th>
+                    <th>Faltas</th>
+                    <th>Descanso</th>
                     <th>Volume Total</th>
                     <th>Média / Sessão</th>
-                    <th>Desvio Padrão (σ)</th>
                     <th>Carga Intensa (Z4–VEL)</th>
+                    <th>Estado Físico</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -805,12 +1150,25 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
                       <td>
                         <span className="db-chip">{row.athlete.category}</span>
                       </td>
-                      <td>{row.athlete.mainEvent || '—'}</td>
                       <td className="mono-num">{row.sessions}</td>
+                      <td
+                        className="mono-num"
+                        style={{
+                          color: row.missedCount > 0 ? '#dc2626' : undefined,
+                          fontWeight: row.missedCount > 0 ? 700 : undefined,
+                        }}
+                      >
+                        {row.missedCount}
+                      </td>
+                      <td className="mono-num">{row.restDays}d</td>
                       <td className="mono-num">{formatMeters(row.totalMeters)}</td>
                       <td className="mono-num">{formatMeters(row.avgMeters)}</td>
-                      <td className="mono-num">±{formatMeters(row.stdDev)}</td>
                       <td className="mono-num">{row.highPct}%</td>
+                      <td>
+                        <span className={`readiness-badge tone-${row.physicalState.tone}`}>
+                          {row.physicalState.label}
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

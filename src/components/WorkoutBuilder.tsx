@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
+  Check,
   Clock,
   Copy,
   Edit3,
@@ -38,6 +39,7 @@ interface WorkoutBuilderProps {
   onPrintWorkout: () => void;
   onResetDraft: () => void;
   onGoToPlanning?: () => void;
+  onQuickAddAthlete?: (athlete: Athlete) => Promise<void> | void;
 }
 
 const BLOCKS: Array<{ key: BlockType; title: string; subtitle: string }> = [
@@ -79,9 +81,16 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
   onPrintWorkout,
   onResetDraft,
   onGoToPlanning,
+  onQuickAddAthlete,
 }) => {
   const [activeComposerBlock, setActiveComposerBlock] = useState<BlockType | null>(null);
   const [editingItem, setEditingItem] = useState<WorkoutItem | null>(null);
+  const [showQuickAthlete, setShowQuickAthlete] = useState(false);
+  const [quickAthleteName, setQuickAthleteName] = useState('');
+  const [quickAthleteCategory, setQuickAthleteCategory] = useState(
+    activeTeam?.categories[0] ?? 'Geral'
+  );
+  const [quickAthleteEvent, setQuickAthleteEvent] = useState('');
 
   const stats = computeWorkoutStats(draft.items, catalog.zones);
 
@@ -139,10 +148,33 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
       targetCategory:
         plan.targetScope === 'categoria' ? plan.targetCategory : draft.targetCategory,
       targetAthleteIds:
-        plan.targetScope === 'atletas' && plan.targetAthleteId
-          ? [plan.targetAthleteId]
+        plan.targetScope === 'atletas'
+          ? plan.targetAthleteIds ?? (plan.targetAthleteId ? [plan.targetAthleteId] : undefined)
           : draft.targetAthleteIds,
     });
+  };
+
+  const handleQuickAddAthlete = async () => {
+    if (!activeTeam || !onQuickAddAthlete || !quickAthleteName.trim()) return;
+    const now = new Date().toISOString();
+    const newAth: Athlete = {
+      id: generateId('ath'),
+      teamId: activeTeam.id,
+      name: quickAthleteName.trim(),
+      category: quickAthleteCategory || activeTeam.categories[0] || 'Geral',
+      mainEvent: quickAthleteEvent.trim() || 'Livre',
+      bestTime: '',
+      status: 'Ativo',
+      notes: '',
+      createdAt: now,
+      updatedAt: now,
+    };
+    await onQuickAddAthlete(newAth);
+    const current = draft.targetAthleteIds ?? [];
+    onChangeDraft({ ...draft, targetAthleteIds: [...current, newAth.id] });
+    setQuickAthleteName('');
+    setQuickAthleteEvent('');
+    setShowQuickAthlete(false);
   };
 
   const handleSelectPhase = (phaseId: string) => {
@@ -357,9 +389,62 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
 
                     {currentScope === 'atletas' && (
                       <div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
+                            Selecione um ou mais atletas ({(draft.targetAthleteIds ?? []).length} selecionado{(draft.targetAthleteIds ?? []).length === 1 ? '' : 's'}):
+                          </span>
+                          {onQuickAddAthlete && (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              style={{ padding: '2px 8px', fontSize: 11 }}
+                              onClick={() => setShowQuickAthlete((v) => !v)}
+                            >
+                              <Plus size={12} /> Novo Atleta Rápido
+                            </button>
+                          )}
+                        </div>
+
+                        {showQuickAthlete && (
+                          <div className="quick-athlete-box" style={{ marginBottom: 10 }}>
+                            <input
+                              type="text"
+                              className="input"
+                              value={quickAthleteName}
+                              onChange={(e) => setQuickAthleteName(e.target.value)}
+                              placeholder="Nome do atleta"
+                            />
+                            <select
+                              className="select"
+                              value={quickAthleteCategory}
+                              onChange={(e) => setQuickAthleteCategory(e.target.value)}
+                            >
+                              {activeTeam.categories.map((cat) => (
+                                <option key={cat} value={cat}>
+                                  {cat}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="text"
+                              className="input"
+                              value={quickAthleteEvent}
+                              onChange={(e) => setQuickAthleteEvent(e.target.value)}
+                              placeholder="Prova principal (ex: 100m Livre)"
+                            />
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-sm"
+                              onClick={handleQuickAddAthlete}
+                            >
+                              <Check size={13} /> Adicionar
+                            </button>
+                          </div>
+                        )}
+
                         {athletes.length === 0 ? (
                           <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
-                            Nenhum atleta cadastrado na equipe ainda.
+                            Nenhum atleta cadastrado na equipe ainda. Use "Novo Atleta Rápido" acima.
                           </span>
                         ) : (
                           <>

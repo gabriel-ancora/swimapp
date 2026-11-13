@@ -1,7 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { Calendar, Copy, Edit3, Plus, Printer, Search, Trash2, Waves } from 'lucide-react';
+import { Calendar, Copy, Edit3, Plus, Printer, Search, Trash2, UserX, Waves } from 'lucide-react';
 import type { Athlete, CatalogDatabase, Workout } from '../types/swimming';
-import { computeWorkoutStats, formatDateBR, formatMeters } from '../utils/storage';
+import {
+  computeWorkoutStats,
+  formatDateBR,
+  formatMeters,
+  isWorkoutAssignedToAthlete,
+} from '../utils/storage';
 
 interface MyWorkoutsProps {
   workouts: Workout[];
@@ -11,6 +16,8 @@ interface MyWorkoutsProps {
   onPrint: (workout: Workout) => void;
   onDuplicate: (workout: Workout) => void;
   onDelete: (id: string) => void;
+  onToggleCompleted: (workout: Workout) => void;
+  onToggleAthleteAbsence: (workout: Workout, athleteId: string) => void;
   onCreateNew: () => void;
 }
 
@@ -22,16 +29,22 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
   onPrint,
   onDuplicate,
   onDelete,
+  onToggleCompleted,
+  onToggleAthleteAbsence,
   onCreateNew,
 }) => {
   const [search, setSearch] = useState('');
   const [poolFilter, setPoolFilter] = useState<'all' | 25 | 50>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'pending'>('all');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [attendanceOpenId, setAttendanceOpenId] = useState<string | null>(null);
 
   const filteredWorkouts = useMemo(() => {
     const q = search.trim().toLowerCase();
     return workouts.filter((wk) => {
       if (poolFilter !== 'all' && wk.poolLength !== poolFilter) return false;
+      if (statusFilter === 'completed' && !wk.completed) return false;
+      if (statusFilter === 'pending' && wk.completed) return false;
       if (!q) return true;
       return (
         wk.title.toLowerCase().includes(q) ||
@@ -43,7 +56,7 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
         wk.items.some((i) => i.seriesType.toLowerCase().includes(q))
       );
     });
-  }, [workouts, search, poolFilter]);
+  }, [workouts, search, poolFilter, statusFilter]);
 
   return (
     <div>
@@ -97,6 +110,30 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
             50m
           </button>
         </div>
+
+        <div className="segmented">
+          <button
+            type="button"
+            className={statusFilter === 'all' ? 'active' : ''}
+            onClick={() => setStatusFilter('all')}
+          >
+            Todos
+          </button>
+          <button
+            type="button"
+            className={statusFilter === 'completed' ? 'active' : ''}
+            onClick={() => setStatusFilter('completed')}
+          >
+            Concluídos
+          </button>
+          <button
+            type="button"
+            className={statusFilter === 'pending' ? 'active' : ''}
+            onClick={() => setStatusFilter('pending')}
+          >
+            Pendentes
+          </button>
+        </div>
       </div>
 
       {filteredWorkouts.length === 0 ? (
@@ -124,10 +161,26 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
             const isConfirming = confirmDeleteId === wk.id;
 
             return (
-              <article key={wk.id} className="workout-card">
+              <article
+                key={wk.id}
+                className={`workout-card ${wk.completed ? 'workout-card-completed' : ''}`}
+              >
                 <div className="workout-card-top">
-                  <div>
-                    <h3 className="workout-card-title">{wk.title || 'Treino Sem Título'}</h3>
+                  <div style={{ flex: 1 }}>
+                    <div className="workout-card-title-row">
+                      <h3 className="workout-card-title">{wk.title || 'Treino Sem Título'}</h3>
+                      <label
+                        className={`workout-completed-check ${wk.completed ? 'checked' : ''}`}
+                        title="Marcar treino como concluído para contabilizar nos painéis"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={Boolean(wk.completed)}
+                          onChange={() => onToggleCompleted(wk)}
+                        />
+                        <span>{wk.completed ? 'Concluído' : 'Concluir'}</span>
+                      </label>
+                    </div>
                     <div className="workout-card-meta" style={{ marginTop: 6 }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                         <Calendar size={12} /> {formatDateBR(wk.date)}
@@ -268,6 +321,56 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
                     </span>
                   </div>
                 </div>
+
+                {(() => {
+                  const assignedAthletes = athletes.filter((a) =>
+                    isWorkoutAssignedToAthlete(wk, a)
+                  );
+                  if (assignedAthletes.length === 0) return null;
+                  const absentCount = (wk.absentAthleteIds ?? []).filter((id) =>
+                    assignedAthletes.some((a) => a.id === id)
+                  ).length;
+                  const isOpen = attendanceOpenId === wk.id;
+
+                  return (
+                    <div className="workout-absence-wrap">
+                      <button
+                        type="button"
+                        className={`btn btn-ghost btn-sm ${absentCount > 0 ? 'has-absences' : ''}`}
+                        style={{ padding: '4px 8px', fontSize: 11 }}
+                        onClick={() => setAttendanceOpenId(isOpen ? null : wk.id)}
+                      >
+                        <UserX size={12} />
+                        {absentCount > 0
+                          ? `Faltas registradas: ${absentCount}`
+                          : 'Registrar faltas'}
+                      </button>
+
+                      {isOpen && (
+                        <div className="workout-absence-panel">
+                          <span className="workout-absence-hint">
+                            Clique nos atletas que não compareceram:
+                          </span>
+                          <div className="chip-row">
+                            {assignedAthletes.map((ath) => {
+                              const isAbsent = Boolean(wk.absentAthleteIds?.includes(ath.id));
+                              return (
+                                <button
+                                  key={ath.id}
+                                  type="button"
+                                  className={`chip-btn ${isAbsent ? 'absent-selected' : ''}`}
+                                  onClick={() => onToggleAthleteAbsence(wk, ath.id)}
+                                >
+                                  {ath.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 <div className="workout-card-actions">
                   <button

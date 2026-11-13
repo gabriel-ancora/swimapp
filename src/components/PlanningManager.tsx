@@ -42,6 +42,7 @@ interface PlanningManagerProps {
   onSavePlan: (plan: TrainingPlan) => Promise<void> | void;
   onDeletePlan: (planId: string) => Promise<void> | void;
   onCreateWorkoutFromPlan: (plan: TrainingPlan, phase?: PeriodizationPhase) => void;
+  onQuickAddAthlete?: (athlete: Athlete) => Promise<void> | void;
 }
 
 const PLAN_TYPE_LABELS: Record<PlanType, { label: string; badgeClass: string }> = {
@@ -186,6 +187,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
   onSavePlan,
   onDeletePlan,
   onCreateWorkoutFromPlan,
+  onQuickAddAthlete,
 }) => {
   const [today] = useState(() => new Date().toISOString().slice(0, 10));
   const defaultEnd = addDaysISO(today, 56);
@@ -200,7 +202,15 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
   const [planType, setPlanType] = useState<PlanType>('competicao_alvo');
   const [targetScope, setTargetScope] = useState<WorkoutTargetScope>('equipe');
   const [targetCategory, setTargetCategory] = useState(activeTeam?.categories[0] ?? '');
-  const [targetAthleteId, setTargetAthleteId] = useState(athletes[0]?.id ?? '');
+  const [targetAthleteIds, setTargetAthleteIds] = useState<string[]>(
+    athletes[0]?.id ? [athletes[0].id] : []
+  );
+  const [showQuickAthlete, setShowQuickAthlete] = useState(false);
+  const [quickAthleteName, setQuickAthleteName] = useState('');
+  const [quickAthleteCategory, setQuickAthleteCategory] = useState(
+    activeTeam?.categories[0] ?? 'Geral'
+  );
+  const [quickAthleteEvent, setQuickAthleteEvent] = useState('');
   const [competitionName, setCompetitionName] = useState('');
   const [competitionDate, setCompetitionDate] = useState(defaultEnd);
   const [targetEvent, setTargetEvent] = useState('');
@@ -213,32 +223,70 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
     buildSuggestedPhases(today, defaultEnd)
   );
 
-  const selectedAthlete = useMemo(
-    () => athletes.find((a) => a.id === targetAthleteId) ?? null,
-    [athletes, targetAthleteId]
+  const selectedAthletes = useMemo(
+    () => athletes.filter((a) => targetAthleteIds.includes(a.id)),
+    [athletes, targetAthleteIds]
   );
 
   const selectedAthleteEvents = useMemo(() => {
-    if (!selectedAthlete) return [];
-    const list: Array<{ label: string; event: string; bestTime: string; targetTime: string }> = [];
-    if (selectedAthlete.mainEvent) {
-      list.push({
-        label: `${selectedAthlete.mainEvent} (Principal)`,
-        event: selectedAthlete.mainEvent,
-        bestTime: selectedAthlete.bestTime,
-        targetTime: selectedAthlete.targetTime ?? '',
-      });
-    }
-    for (const ev of selectedAthlete.events ?? []) {
-      list.push({
-        label: ev.event,
-        event: ev.event,
-        bestTime: ev.bestTime,
-        targetTime: ev.targetTime,
-      });
+    const list: Array<{
+      key: string;
+      label: string;
+      event: string;
+      bestTime: string;
+      targetTime: string;
+    }> = [];
+    for (const ath of selectedAthletes) {
+      const firstName = ath.name.split(' ')[0];
+      if (ath.mainEvent) {
+        list.push({
+          key: `${ath.id}-main`,
+          label: `${firstName} · ${ath.mainEvent} (Principal)`,
+          event: ath.mainEvent,
+          bestTime: ath.bestTime,
+          targetTime: ath.targetTime ?? '',
+        });
+      }
+      for (const ev of ath.events ?? []) {
+        list.push({
+          key: `${ath.id}-${ev.id}`,
+          label: `${firstName} · ${ev.event}`,
+          event: ev.event,
+          bestTime: ev.bestTime,
+          targetTime: ev.targetTime,
+        });
+      }
     }
     return list;
-  }, [selectedAthlete]);
+  }, [selectedAthletes]);
+
+  const toggleTargetAthlete = (athleteId: string) => {
+    setTargetAthleteIds((prev) =>
+      prev.includes(athleteId) ? prev.filter((id) => id !== athleteId) : [...prev, athleteId]
+    );
+  };
+
+  const handleQuickAddAthlete = async () => {
+    if (!activeTeam || !onQuickAddAthlete || !quickAthleteName.trim()) return;
+    const now = new Date().toISOString();
+    const newAth: Athlete = {
+      id: generateId('ath'),
+      teamId: activeTeam.id,
+      name: quickAthleteName.trim(),
+      category: quickAthleteCategory || activeTeam.categories[0] || 'Geral',
+      mainEvent: quickAthleteEvent.trim() || 'Livre',
+      bestTime: '',
+      status: 'Ativo',
+      notes: '',
+      createdAt: now,
+      updatedAt: now,
+    };
+    await onQuickAddAthlete(newAth);
+    setTargetAthleteIds((prev) => [...prev, newAth.id]);
+    setQuickAthleteName('');
+    setQuickAthleteEvent('');
+    setShowQuickAthlete(false);
+  };
 
   const resetForm = () => {
     setEditingPlanId(null);
@@ -246,7 +294,8 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
     setPlanType('competicao_alvo');
     setTargetScope('equipe');
     setTargetCategory(activeTeam?.categories[0] ?? '');
-    setTargetAthleteId(athletes[0]?.id ?? '');
+    setTargetAthleteIds(athletes[0]?.id ? [athletes[0].id] : []);
+    setShowQuickAthlete(false);
     setCompetitionName('');
     setCompetitionDate(defaultEnd);
     setTargetEvent('');
@@ -269,7 +318,10 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
     setPlanType(plan.planType);
     setTargetScope(plan.targetScope);
     setTargetCategory(plan.targetCategory ?? activeTeam?.categories[0] ?? '');
-    setTargetAthleteId(plan.targetAthleteId ?? athletes[0]?.id ?? '');
+    setTargetAthleteIds(
+      plan.targetAthleteIds ?? (plan.targetAthleteId ? [plan.targetAthleteId] : [])
+    );
+    setShowQuickAthlete(false);
     setCompetitionName(plan.competitionName ?? '');
     setCompetitionDate(plan.competitionDate ?? plan.endDate);
     setTargetEvent(plan.targetEvent ?? '');
@@ -339,8 +391,8 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
       title.trim() ||
       (planType === 'competicao_alvo' && competitionName.trim()
         ? competitionName.trim()
-        : planType === 'tempo_alvo' && selectedAthlete && targetEvent.trim()
-          ? `${selectedAthlete.name} · ${targetEvent.trim()}`
+        : planType === 'tempo_alvo' && selectedAthletes.length > 0 && targetEvent.trim()
+          ? `${selectedAthletes.map((a) => a.name.split(' ')[0]).join(', ')} · ${targetEvent.trim()}`
           : 'Planejamento de Ciclo');
 
     const payload: TrainingPlan = {
@@ -351,7 +403,12 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
       planType,
       targetScope,
       targetCategory: targetScope === 'categoria' ? targetCategory : undefined,
-      targetAthleteId: targetScope === 'atletas' ? targetAthleteId || undefined : undefined,
+      targetAthleteId:
+        targetScope === 'atletas' ? targetAthleteIds[0] || undefined : undefined,
+      targetAthleteIds:
+        targetScope === 'atletas' && targetAthleteIds.length > 0
+          ? targetAthleteIds
+          : undefined,
       targetEvent: targetEvent.trim() || undefined,
       targetTime: targetTime.trim() || undefined,
       competitionName: competitionName.trim() || undefined,
@@ -509,7 +566,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                     className={targetScope === 'atletas' ? 'active' : ''}
                     onClick={() => setTargetScope('atletas')}
                   >
-                    Atleta Específico
+                    Atletas Específicos
                   </button>
                 </div>
 
@@ -529,23 +586,80 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
 
                 {targetScope === 'atletas' && (
                   <div>
-                    {athletes.length === 0 ? (
-                      <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
-                        Cadastre atletas na aba Equipe para vincular um tempo alvo individual.
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
+                        Selecione um ou mais atletas para este planejamento ({targetAthleteIds.length} selecionado{targetAthleteIds.length === 1 ? '' : 's'}):
                       </span>
-                    ) : (
-                      <>
+                      {activeTeam && onQuickAddAthlete && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          style={{ padding: '2px 8px', fontSize: 11 }}
+                          onClick={() => setShowQuickAthlete((v) => !v)}
+                        >
+                          <Plus size={12} /> Novo Atleta Rápido
+                        </button>
+                      )}
+                    </div>
+
+                    {showQuickAthlete && activeTeam && (
+                      <div className="quick-athlete-box" style={{ marginBottom: 10 }}>
+                        <input
+                          type="text"
+                          className="input"
+                          value={quickAthleteName}
+                          onChange={(e) => setQuickAthleteName(e.target.value)}
+                          placeholder="Nome do atleta"
+                        />
                         <select
                           className="select"
-                          value={targetAthleteId}
-                          onChange={(e) => setTargetAthleteId(e.target.value)}
+                          value={quickAthleteCategory}
+                          onChange={(e) => setQuickAthleteCategory(e.target.value)}
                         >
-                          {athletes.map((ath) => (
-                            <option key={ath.id} value={ath.id}>
-                              {ath.name} ({ath.category})
+                          {activeTeam.categories.map((cat) => (
+                            <option key={cat} value={cat}>
+                              {cat}
                             </option>
                           ))}
                         </select>
+                        <input
+                          type="text"
+                          className="input"
+                          value={quickAthleteEvent}
+                          onChange={(e) => setQuickAthleteEvent(e.target.value)}
+                          placeholder="Prova principal (ex: 100m Livre)"
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={handleQuickAddAthlete}
+                        >
+                          <Check size={13} /> Adicionar
+                        </button>
+                      </div>
+                    )}
+
+                    {athletes.length === 0 ? (
+                      <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+                        Cadastre atletas na aba Equipe ou use "Novo Atleta Rápido" acima.
+                      </span>
+                    ) : (
+                      <>
+                        <div className="chip-row">
+                          {athletes.map((ath) => {
+                            const selected = targetAthleteIds.includes(ath.id);
+                            return (
+                              <button
+                                key={ath.id}
+                                type="button"
+                                className={`chip-btn ${selected ? 'selected' : ''}`}
+                                onClick={() => toggleTargetAthlete(ath.id)}
+                              >
+                                {ath.name} ({ath.category})
+                              </button>
+                            );
+                          })}
+                        </div>
 
                         {selectedAthleteEvents.length > 0 && (
                           <div style={{ marginTop: 8 }}>
@@ -557,12 +671,12 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                                 marginBottom: 4,
                               }}
                             >
-                              Provas cadastradas do atleta (clique para preencher prova e tempo meta):
+                              Provas cadastradas dos atletas selecionados (clique para preencher prova e tempo meta):
                             </span>
                             <div className="chip-row">
-                              {selectedAthleteEvents.map((ev, idx) => (
+                              {selectedAthleteEvents.map((ev) => (
                                 <button
-                                  key={`${ev.event}-${idx}`}
+                                  key={ev.key}
                                   type="button"
                                   className={`chip-btn ${targetEvent === ev.event ? 'selected' : ''}`}
                                   onClick={() => {
@@ -904,9 +1018,9 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
       ) : (
         <div className="plans-stack">
           {filteredPlans.map((plan) => {
-            const targetAthlete = plan.targetAthleteId
-              ? athletes.find((a) => a.id === plan.targetAthleteId)
-              : null;
+            const planAthleteIds =
+              plan.targetAthleteIds ?? (plan.targetAthleteId ? [plan.targetAthleteId] : []);
+            const targetAthletesList = athletes.filter((a) => planAthleteIds.includes(a.id));
             const daysRemaining = diffDaysISO(today, plan.competitionDate || plan.endDate);
             const linkedWorkoutsCount = workouts.filter((w) => w.planId === plan.id).length;
             const isExpanded = expandedPlanId === plan.id;
@@ -927,11 +1041,12 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                       {plan.targetScope === 'categoria' && plan.targetCategory && (
                         <span className="db-chip">Grupo: {plan.targetCategory}</span>
                       )}
-                      {plan.targetScope === 'atletas' && targetAthlete && (
-                        <span className="db-chip">
-                          <User size={11} /> {targetAthlete.name}
-                        </span>
-                      )}
+                      {plan.targetScope === 'atletas' &&
+                        targetAthletesList.map((ath) => (
+                          <span key={ath.id} className="db-chip">
+                            <User size={11} /> {ath.name}
+                          </span>
+                        ))}
                       {plan.targetEvent && (
                         <span className="db-chip">
                           <strong>{plan.targetEvent}</strong>

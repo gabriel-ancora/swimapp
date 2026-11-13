@@ -52,6 +52,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
   const [coachFilter, setCoachFilter] = useState<string>('all');
   const [objectiveFilter, setObjectiveFilter] = useState<string>('all');
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
+  const [todayRef] = useState(() => new Date());
 
   const availableCoaches = useMemo(() => {
     const set = new Set<string>();
@@ -71,14 +72,13 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
   }, [workouts]);
 
   const filteredWorkouts = useMemo(() => {
-    const now = new Date();
     const cutoff =
       period === 'all'
         ? null
         : new Date(
-            now.getFullYear(),
-            now.getMonth(),
-            now.getDate() - (period === '7d' ? 7 : period === '30d' ? 30 : 90)
+            todayRef.getFullYear(),
+            todayRef.getMonth(),
+            todayRef.getDate() - (period === '7d' ? 7 : period === '30d' ? 30 : 90)
           );
 
     return workouts
@@ -93,7 +93,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
         return true;
       })
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-  }, [workouts, period, poolFilter, coachFilter, objectiveFilter]);
+  }, [workouts, period, poolFilter, coachFilter, objectiveFilter, todayRef]);
 
   const analytics = useMemo(() => {
     let totalMeters = 0;
@@ -137,7 +137,13 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
       50: { sessions: 0, meters: 0 },
     };
 
-    const sessions = filteredWorkouts.map((wk) => {
+    const sessions: Array<{
+      workout: Workout;
+      stats: ReturnType<typeof computeWorkoutStats>;
+      highIntensityPercent: number;
+    }> = [];
+
+    for (const wk of filteredWorkouts) {
       const stats = computeWorkoutStats(wk.items, catalog.zones);
       totalMeters += stats.totalMeters;
       totalMinutes += stats.estimatedMinutes;
@@ -201,12 +207,12 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
       const highPct =
         stats.totalMeters > 0 ? Math.round((wkHighIntensity / stats.totalMeters) * 100) : 0;
 
-      return {
+      sessions.push({
         workout: wk,
         stats,
         highIntensityPercent: highPct,
-      };
-    });
+      });
+    }
 
     const sessionCount = filteredWorkouts.length;
     const avgMetersPerSession = sessionCount > 0 ? Math.round(totalMeters / sessionCount) : 0;
@@ -260,21 +266,30 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
     const radius = 52;
     const circumference = 2 * Math.PI * radius;
     let offset = 0;
-    return analytics.byZone
-      .filter((z) => z.meters > 0)
-      .map((z) => {
-        const ratio = analytics.totalMeters > 0 ? z.meters / analytics.totalMeters : 0;
-        const dash = ratio * circumference;
-        const seg = {
-          ...z,
-          dash,
-          gap: circumference - dash,
-          offset,
-          circumference,
-        };
-        offset += dash;
-        return seg;
+    const segments: Array<
+      (typeof analytics.byZone)[number] & {
+        dash: number;
+        gap: number;
+        offset: number;
+        circumference: number;
+      }
+    > = [];
+
+    for (const z of analytics.byZone) {
+      if (z.meters <= 0) continue;
+      const ratio = analytics.totalMeters > 0 ? z.meters / analytics.totalMeters : 0;
+      const dash = ratio * circumference;
+      segments.push({
+        ...z,
+        dash,
+        gap: circumference - dash,
+        offset,
+        circumference,
       });
+      offset += dash;
+    }
+
+    return segments;
   }, [analytics.byZone, analytics.totalMeters]);
 
   const activeHoveredSession =

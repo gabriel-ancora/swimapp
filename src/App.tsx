@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from 'convex/react';
 import { makeFunctionReference } from 'convex/server';
 import {
+  BarChart3,
   CheckCircle2,
   ClipboardList,
   Cloud,
@@ -11,6 +12,7 @@ import {
   Waves,
 } from 'lucide-react';
 import './App.css';
+import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { CatalogManager } from './components/CatalogManager';
 import { MyWorkouts } from './components/MyWorkouts';
 import { PrintSheet } from './components/PrintSheet';
@@ -210,6 +212,14 @@ function AppShell({
               </button>
               <button
                 type="button"
+                className={`nav-tab ${activeTab === 'painel' ? 'active' : ''}`}
+                onClick={() => setActiveTab('painel')}
+              >
+                <BarChart3 size={15} />
+                Painel
+              </button>
+              <button
+                type="button"
                 className={`nav-tab ${activeTab === 'base' ? 'active' : ''}`}
                 onClick={() => setActiveTab('base')}
               >
@@ -258,6 +268,18 @@ function AppShell({
               onPrint={handlePrint}
               onDuplicate={handleDuplicateWorkout}
               onDelete={handleDeleteWorkout}
+              onCreateNew={() => {
+                handleResetDraft();
+                setActiveTab('novo');
+              }}
+            />
+          )}
+
+          {activeTab === 'painel' && (
+            <AnalyticsDashboard
+              workouts={workouts}
+              catalog={catalog}
+              onEditWorkout={handleEditFromList}
               onCreateNew={() => {
                 handleResetDraft();
                 setActiveTab('novo');

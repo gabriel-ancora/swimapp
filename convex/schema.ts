@@ -35,6 +35,42 @@ export const seriesTypeOptionValidator = v.object({
   ),
 });
 
+export const athleteEventGoalValidator = v.object({
+  id: v.string(),
+  event: v.string(),
+  bestTime: v.string(),
+  targetTime: v.string(),
+});
+
+export const periodizationPhaseValidator = v.object({
+  id: v.string(),
+  name: v.string(),
+  phaseType: v.union(
+    v.literal('base'),
+    v.literal('especifico'),
+    v.literal('pre_competitivo'),
+    v.literal('polimento'),
+    v.literal('competicao'),
+    v.literal('transicao')
+  ),
+  startDate: v.string(),
+  endDate: v.string(),
+  focus: v.string(),
+  targetZones: v.array(
+    v.union(
+      v.literal('Z1'),
+      v.literal('Z2'),
+      v.literal('Z3'),
+      v.literal('Z4'),
+      v.literal('Z5'),
+      v.literal('VEL')
+    )
+  ),
+  intensityLabel: v.string(),
+  weeklySessions: v.number(),
+  notes: v.string(),
+});
+
 export default defineSchema({
   workouts: defineTable({
     clientId: v.string(),
@@ -45,6 +81,12 @@ export default defineSchema({
     ),
     targetCategory: v.optional(v.string()),
     targetAthleteIds: v.optional(v.array(v.string())),
+    planId: v.optional(v.string()),
+    phaseId: v.optional(v.string()),
+    periodizationPhase: v.optional(v.string()),
+    targetCompetition: v.optional(v.string()),
+    targetEvent: v.optional(v.string()),
+    targetTime: v.optional(v.string()),
     title: v.string(),
     date: v.string(),
     poolLength: v.union(v.literal(25), v.literal(50)),
@@ -78,7 +120,7 @@ export default defineSchema({
     club: v.string(),
     accentColor: v.string(),
     categories: v.array(v.string()),
-    weeklyVolumeGoalMeters: v.number(),
+    weeklyVolumeGoalMeters: v.optional(v.number()),
     weeklySessionsGoal: v.number(),
     createdAt: v.string(),
     updatedAt: v.string(),
@@ -93,6 +135,8 @@ export default defineSchema({
     category: v.string(),
     mainEvent: v.string(),
     bestTime: v.string(),
+    targetTime: v.optional(v.string()),
+    events: v.optional(v.array(athleteEventGoalValidator)),
     status: v.union(v.literal('Ativo'), v.literal('Recuperação'), v.literal('Inativo')),
     notes: v.string(),
     createdAt: v.string(),
@@ -100,6 +144,34 @@ export default defineSchema({
   })
     .index('by_clientId', ['clientId'])
     .index('by_teamId', ['teamId']),
+
+  plans: defineTable({
+    clientId: v.string(),
+    coachId: v.string(),
+    teamId: v.optional(v.string()),
+    title: v.string(),
+    planType: v.union(
+      v.literal('competicao_alvo'),
+      v.literal('tempo_alvo'),
+      v.literal('objetivo_geral')
+    ),
+    targetScope: v.union(v.literal('equipe'), v.literal('categoria'), v.literal('atletas')),
+    targetCategory: v.optional(v.string()),
+    targetAthleteId: v.optional(v.string()),
+    targetEvent: v.optional(v.string()),
+    targetTime: v.optional(v.string()),
+    competitionName: v.optional(v.string()),
+    competitionDate: v.optional(v.string()),
+    startDate: v.string(),
+    endDate: v.string(),
+    objective: v.string(),
+    notes: v.string(),
+    phases: v.array(periodizationPhaseValidator),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index('by_clientId', ['clientId'])
+    .index('by_coachId', ['coachId']),
 
   catalogs: defineTable({
     key: v.string(),

@@ -6,9 +6,11 @@ import {
   Copy,
   Edit3,
   FilePlus2,
+  Layers,
   Plus,
   Printer,
   Save,
+  Target,
   Trash2,
 } from 'lucide-react';
 import type {
@@ -16,11 +18,12 @@ import type {
   BlockType,
   CatalogDatabase,
   Team,
+  TrainingPlan,
   Workout,
   WorkoutItem,
   WorkoutTargetScope,
 } from '../types/swimming';
-import { computeWorkoutStats, formatMeters, generateId, getItemMeters } from '../utils/storage';
+import { computeWorkoutStats, formatDateBR, formatMeters, generateId, getItemMeters } from '../utils/storage';
 import { SeriesComposer } from './SeriesComposer';
 
 interface WorkoutBuilderProps {
@@ -29,10 +32,12 @@ interface WorkoutBuilderProps {
   catalog: CatalogDatabase;
   activeTeam: Team | null;
   athletes: Athlete[];
+  plans?: TrainingPlan[];
   onChangeDraft: (updated: Workout) => void;
   onSaveWorkout: () => void;
   onPrintWorkout: () => void;
   onResetDraft: () => void;
+  onGoToPlanning?: () => void;
 }
 
 const BLOCKS: Array<{ key: BlockType; title: string; subtitle: string }> = [
@@ -53,16 +58,27 @@ const BLOCKS: Array<{ key: BlockType; title: string; subtitle: string }> = [
   },
 ];
 
+const PERIODIZATION_PHASES = [
+  'Base Geral',
+  'Específico',
+  'Pré-Competitivo',
+  'Polimento (Taper)',
+  'Competição Alvo',
+  'Transição / Regenerativo',
+];
+
 export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
   draft,
   isEditingExisting,
   catalog,
   activeTeam,
   athletes,
+  plans = [],
   onChangeDraft,
   onSaveWorkout,
   onPrintWorkout,
   onResetDraft,
+  onGoToPlanning,
 }) => {
   const [activeComposerBlock, setActiveComposerBlock] = useState<BlockType | null>(null);
   const [editingItem, setEditingItem] = useState<WorkoutItem | null>(null);
@@ -94,6 +110,52 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
       : [...current, athleteId];
     onChangeDraft({ ...draft, targetAthleteIds: next });
   };
+
+  const selectedPlan = plans.find((p) => p.id === draft.planId) ?? null;
+  const selectedPhase =
+    selectedPlan?.phases.find((ph) => ph.id === draft.phaseId) ?? null;
+
+  const handleSelectPlan = (planId: string) => {
+    if (!planId) {
+      onChangeDraft({
+        ...draft,
+        planId: undefined,
+        phaseId: undefined,
+      });
+      return;
+    }
+    const plan = plans.find((p) => p.id === planId);
+    if (!plan) return;
+    const firstPhase = plan.phases[0];
+    onChangeDraft({
+      ...draft,
+      planId: plan.id,
+      phaseId: firstPhase?.id,
+      periodizationPhase: firstPhase?.name ?? draft.periodizationPhase,
+      targetCompetition: plan.competitionName || plan.title,
+      targetEvent: plan.targetEvent ?? draft.targetEvent,
+      targetTime: plan.targetTime ?? draft.targetTime,
+      targetScope: plan.targetScope,
+      targetCategory:
+        plan.targetScope === 'categoria' ? plan.targetCategory : draft.targetCategory,
+      targetAthleteIds:
+        plan.targetScope === 'atletas' && plan.targetAthleteId
+          ? [plan.targetAthleteId]
+          : draft.targetAthleteIds,
+    });
+  };
+
+  const handleSelectPhase = (phaseId: string) => {
+    if (!selectedPlan) return;
+    const phase = selectedPlan.phases.find((ph) => ph.id === phaseId);
+    onChangeDraft({
+      ...draft,
+      phaseId: phaseId || undefined,
+      periodizationPhase: phase ? phase.name : draft.periodizationPhase,
+    });
+  };
+
+  const selectedAthletesList = athletes.filter((a) => draft.targetAthleteIds?.includes(a.id));
 
   const handleSaveItem = (item: WorkoutItem) => {
     if (editingItem) {
@@ -300,26 +362,200 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                             Nenhum atleta cadastrado na equipe ainda.
                           </span>
                         ) : (
-                          <div className="chip-row">
-                            {athletes.map((ath) => {
-                              const selected = Boolean(draft.targetAthleteIds?.includes(ath.id));
-                              return (
-                                <button
-                                  key={ath.id}
-                                  type="button"
-                                  className={`chip-btn ${selected ? 'selected' : ''}`}
-                                  onClick={() => toggleTargetAthlete(ath.id)}
+                          <>
+                            <div className="chip-row">
+                              {athletes.map((ath) => {
+                                const selected = Boolean(draft.targetAthleteIds?.includes(ath.id));
+                                return (
+                                  <button
+                                    key={ath.id}
+                                    type="button"
+                                    className={`chip-btn ${selected ? 'selected' : ''}`}
+                                    onClick={() => toggleTargetAthlete(ath.id)}
+                                  >
+                                    {ath.name} ({ath.category})
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {selectedAthletesList.length > 0 && (
+                              <div style={{ marginTop: 8 }}>
+                                <span
+                                  style={{
+                                    display: 'block',
+                                    fontSize: 11,
+                                    color: 'var(--ink-muted)',
+                                    marginBottom: 4,
+                                  }}
                                 >
-                                  {ath.name} ({ath.category})
-                                </button>
-                              );
-                            })}
-                          </div>
+                                  Provas e metas dos atletas selecionados (clique para definir como prova/tempo alvo do treino):
+                                </span>
+                                <div className="chip-row">
+                                  {selectedAthletesList.flatMap((ath) => {
+                                    const evs = [
+                                      ...(ath.mainEvent
+                                        ? [
+                                            {
+                                              key: `${ath.id}-main`,
+                                              event: ath.mainEvent,
+                                              targetTime: ath.targetTime ?? '',
+                                              bestTime: ath.bestTime,
+                                            },
+                                          ]
+                                        : []),
+                                      ...(ath.events ?? []).map((e) => ({
+                                        key: e.id,
+                                        event: e.event,
+                                        targetTime: e.targetTime,
+                                        bestTime: e.bestTime,
+                                      })),
+                                    ];
+                                    return evs.map((ev) => (
+                                      <button
+                                        key={ev.key}
+                                        type="button"
+                                        className={`chip-btn ${draft.targetEvent === ev.event ? 'selected' : ''}`}
+                                        onClick={() =>
+                                          onChangeDraft({
+                                            ...draft,
+                                            targetEvent: ev.event,
+                                            targetTime: ev.targetTime || draft.targetTime,
+                                          })
+                                        }
+                                      >
+                                        {ath.name.split(' ')[0]} · {ev.event}
+                                        {ev.targetTime
+                                          ? ` → Meta ${ev.targetTime}`
+                                          : ev.bestTime
+                                            ? ` (${ev.bestTime})`
+                                            : ''}
+                                      </button>
+                                    ));
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     )}
                   </div>
                 )}
+
+                {/* Periodization & Planning Integration */}
+                <div className="field col-12">
+                  <div className="workout-planning-box">
+                    <div className="workout-planning-head">
+                      <span style={{ fontWeight: 700, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <Layers size={14} style={{ color: 'var(--accent-primary)' }} />
+                        Planejamento & Periodização
+                      </span>
+                      {onGoToPlanning && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={onGoToPlanning}
+                        >
+                          <Target size={13} /> Gerenciar Planejamentos
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="form-grid">
+                      <div className="field col-6">
+                        <label>Planejamento / Ciclo Alvo</label>
+                        <select
+                          className="select"
+                          value={draft.planId ?? ''}
+                          onChange={(e) => handleSelectPlan(e.target.value)}
+                        >
+                          <option value="">Sem vínculo (definir manualmente)</option>
+                          {plans.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.title}
+                              {p.competitionDate ? ` (${formatDateBR(p.competitionDate)})` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="field col-6">
+                        <label>Fase da Periodização</label>
+                        {selectedPlan && selectedPlan.phases.length > 0 ? (
+                          <select
+                            className="select"
+                            value={draft.phaseId ?? ''}
+                            onChange={(e) => handleSelectPhase(e.target.value)}
+                          >
+                            <option value="">Selecione a fase...</option>
+                            {selectedPlan.phases.map((ph) => (
+                              <option key={ph.id} value={ph.id}>
+                                {ph.name} ({formatDateBR(ph.startDate)} – {formatDateBR(ph.endDate)})
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <select
+                            className="select"
+                            value={draft.periodizationPhase ?? ''}
+                            onChange={(e) => updateField('periodizationPhase', e.target.value || undefined)}
+                          >
+                            <option value="">Opcional (selecione uma fase)...</option>
+                            {PERIODIZATION_PHASES.map((ph) => (
+                              <option key={ph} value={ph}>
+                                {ph}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+
+                      <div className="field col-4">
+                        <label>Competição / Objetivo Alvo</label>
+                        <input
+                          type="text"
+                          className="input"
+                          value={draft.targetCompetition ?? ''}
+                          onChange={(e) =>
+                            updateField('targetCompetition', e.target.value || undefined)
+                          }
+                          placeholder="Ex: Troféu Brasil / Sub-51s"
+                        />
+                      </div>
+
+                      <div className="field col-4">
+                        <label>Prova Alvo</label>
+                        <input
+                          type="text"
+                          className="input"
+                          value={draft.targetEvent ?? ''}
+                          onChange={(e) => updateField('targetEvent', e.target.value || undefined)}
+                          placeholder="Ex: 100m Livre"
+                        />
+                      </div>
+
+                      <div className="field col-4">
+                        <label>Tempo Alvo</label>
+                        <input
+                          type="text"
+                          className="input mono-num"
+                          value={draft.targetTime ?? ''}
+                          onChange={(e) => updateField('targetTime', e.target.value || undefined)}
+                          placeholder="Ex: 50.80s"
+                        />
+                      </div>
+                    </div>
+
+                    {selectedPhase && (
+                      <div className="phase-hint-strip">
+                        <strong>Foco da fase:</strong> {selectedPhase.focus || '—'} ·{' '}
+                        <strong>Zonas:</strong> {selectedPhase.targetZones.join(', ') || '—'} ·{' '}
+                        <strong>{selectedPhase.weeklySessions}x/sem</strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
 
                 <div className="field col-12">
                   <label>Observações Gerais do Treino</label>

@@ -1988,3 +1988,230 @@
     flex: 1 1 100%;
   }
 }
+
+
+/* Athlete Extra Events & Target Times */
+.athlete-events-box {
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.athlete-events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.athlete-event-row {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Workout Builder Planning Integration */
+.workout-planning-box {
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.workout-planning-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.phase-hint-strip {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hairline);
+  font-size: 12px;
+  color: var(--ink-secondary);
+}
+
+/* Planning & Periodization Manager */
+.periodization-builder {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-hairline);
+}
+
+.periodization-builder-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.phases-editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.phase-editor-card {
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.phase-editor-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.phase-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.plans-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.plan-card {
+  padding: 16px 18px;
+}
+
+.plan-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.plan-card-title {
+  margin: 8px 0 4px 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink-primary);
+}
+
+.plan-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid;
+}
+
+.plan-badge-comp {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+.plan-badge-time {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #a7f3d0;
+}
+
+.plan-badge-goal {
+  background: #f5f3ff;
+  color: #6d28d9;
+  border-color: #ddd6fe;
+}
+
+.plan-summary-strip {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--bg-canvas);
+  font-size: 12px;
+}
+
+.plan-timeline-wrap {
+  margin-top: 12px;
+}
+
+.plan-timeline-bar {
+  display: flex;
+  gap: 3px;
+  height: 26px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.plan-timeline-seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plan-phases-detail {
+  margin-top: 12px;
+  border-top: 1px solid var(--border-hairline);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.phase-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-hairline);
+  flex-wrap: wrap;
+}
+
+.phase-detail-left {
+  flex: 1 1 320px;
+}
+
+.phase-detail-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.zone-mini-pill {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hairline);
+  color: var(--ink-primary);
+}
+
+@media (max-width: 720px) {
+  .athlete-event-row {
+    grid-template-columns: 1fr;
+  }
+}

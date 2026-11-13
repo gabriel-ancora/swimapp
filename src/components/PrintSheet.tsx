@@ -35,6 +35,22 @@ export const PrintSheet: React.FC<PrintSheetProps> = ({ workout, catalog }) => {
             <span>
               <strong>Objetivo:</strong> {workout.objective}
             </span>
+            {workout.periodizationPhase && (
+              <span>
+                <strong>Periodização:</strong> {workout.periodizationPhase}
+              </span>
+            )}
+            {workout.targetCompetition && (
+              <span>
+                <strong>Alvo:</strong> {workout.targetCompetition}
+              </span>
+            )}
+            {workout.targetEvent && (
+              <span>
+                <strong>Prova Alvo:</strong> {workout.targetEvent}
+                {workout.targetTime ? ` (${workout.targetTime})` : ''}
+              </span>
+            )}
             {workout.coach && (
               <span>
                 <strong>Técnico:</strong> {workout.coach}

@@ -10,7 +10,14 @@ import {
   Users,
   Waves,
 } from 'lucide-react';
-import type { Athlete, CatalogDatabase, Team, Workout, ZoneId } from '../types/swimming';
+import type {
+  Athlete,
+  CatalogDatabase,
+  Team,
+  TrainingPlan,
+  Workout,
+  ZoneId,
+} from '../types/swimming';
 import {
   computeWorkoutStats,
   estimateItemSeconds,
@@ -24,6 +31,7 @@ interface AthleteAnalyticsProps {
   activeTeam: Team | null;
   athletes: Athlete[];
   workouts: Workout[];
+  plans?: TrainingPlan[];
   catalog: CatalogDatabase;
   onEditWorkout: (workout: Workout) => void;
   onGoToTeam: () => void;
@@ -42,6 +50,7 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
   activeTeam,
   athletes,
   workouts,
+  plans = [],
   catalog,
   onEditWorkout,
   onGoToTeam,
@@ -225,11 +234,6 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
     const styles = Array.from(styleMap.values()).sort((a, b) => b.meters - a.meters);
     const equipment = Array.from(equipMap.values()).sort((a, b) => b.meters - a.meters);
 
-    const goalPct =
-      activeTeam && activeTeam.weeklyVolumeGoalMeters > 0
-        ? Math.min(100, Math.round((totalMeters / activeTeam.weeklyVolumeGoalMeters) * 100))
-        : 0;
-
     return {
       athlete: effectiveAthlete,
       sessionCount,
@@ -246,9 +250,8 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
       styles,
       equipment,
       sessions,
-      goalPct,
     };
-  }, [effectiveAthlete, periodWorkouts, catalog.zones, activeTeam]);
+  }, [effectiveAthlete, periodWorkouts, catalog.zones]);
 
   const donutSegments = useMemo(() => {
     if (!athleteDetail) return [];
@@ -410,32 +413,69 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
                     {athleteDetail.athlete.status}
                   </span>
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--ink-secondary)', marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: 'var(--ink-secondary)', marginTop: 6 }}>
                   Prova principal: <strong>{athleteDetail.athlete.mainEvent || '—'}</strong> ·
                   Melhor marca:{' '}
                   <strong className="mono-num">{athleteDetail.athlete.bestTime || '—'}</strong>
+                  {athleteDetail.athlete.targetTime && (
+                    <>
+                      {' '}
+                      · Tempo meta:{' '}
+                      <strong className="mono-num" style={{ color: 'var(--accent-primary)' }}>
+                        {athleteDetail.athlete.targetTime}
+                      </strong>
+                    </>
+                  )}
                 </div>
+                {athleteDetail.athlete.events && athleteDetail.athlete.events.length > 0 && (
+                  <div className="tag-cloud" style={{ marginTop: 8 }}>
+                    {athleteDetail.athlete.events.map((ev) => (
+                      <span key={ev.id} className="db-chip">
+                        <strong>{ev.event}</strong>
+                        {ev.bestTime ? ` · ${ev.bestTime}` : ''}
+                        {ev.targetTime ? ` → Meta: ${ev.targetTime}` : ''}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div className="athlete-goal-box">
-                <div className="h-bar-head">
-                  <span style={{ fontWeight: 600 }}>
-                    Progresso vs Meta Semanal ({formatMeters(activeTeam.weeklyVolumeGoalMeters)})
-                  </span>
-                  <span className="mono-num" style={{ fontWeight: 700 }}>
-                    {athleteDetail.goalPct}%
-                  </span>
+              {plans.filter(
+                (p) =>
+                  (!p.teamId || p.teamId === activeTeam.id) &&
+                  (p.targetScope === 'equipe' ||
+                    (p.targetScope === 'categoria' &&
+                      p.targetCategory === athleteDetail.athlete.category) ||
+                    (p.targetScope === 'atletas' &&
+                      p.targetAthleteId === athleteDetail.athlete.id))
+              ).length > 0 && (
+                <div className="athlete-goal-box">
+                  <div className="metric-label" style={{ marginBottom: 6 }}>
+                    Planejamentos Ativos
+                  </div>
+                  <div className="tag-cloud">
+                    {plans
+                      .filter(
+                        (p) =>
+                          (!p.teamId || p.teamId === activeTeam.id) &&
+                          (p.targetScope === 'equipe' ||
+                            (p.targetScope === 'categoria' &&
+                              p.targetCategory === athleteDetail.athlete.category) ||
+                            (p.targetScope === 'atletas' &&
+                              p.targetAthleteId === athleteDetail.athlete.id))
+                      )
+                      .slice(0, 3)
+                      .map((p) => (
+                        <span key={p.id} className="db-chip">
+                          <Target size={12} />
+                          <strong>{p.title}</strong>
+                          {p.targetTime ? ` · Meta ${p.targetTime}` : ''}
+                          {p.competitionDate ? ` (${formatDateBR(p.competitionDate)})` : ''}
+                        </span>
+                      ))}
+                  </div>
                 </div>
-                <div className="h-bar-track" style={{ height: 8, marginTop: 4 }}>
-                  <div
-                    className="h-bar-fill"
-                    style={{
-                      width: `${athleteDetail.goalPct}%`,
-                      backgroundColor: activeTeam.accentColor,
-                    }}
-                  />
-                </div>
-              </div>
+              )}
             </div>
           </div>
 

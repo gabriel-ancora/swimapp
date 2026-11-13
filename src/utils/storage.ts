@@ -6,6 +6,7 @@ import type {
   CoachProfile,
   IntensityZone,
   Team,
+  TrainingPlan,
   Workout,
   WorkoutItem,
   ZoneId,
@@ -17,6 +18,7 @@ const SESSION_KEY = 'raia_pro_session_v1';
 const COACHES_KEY = 'raia_pro_coaches_v1';
 const TEAMS_KEY = 'raia_pro_teams_v1';
 const ATHLETES_KEY = 'raia_pro_athletes_v1';
+const PLANS_KEY = 'raia_pro_plans_v1';
 
 export function loadCatalog(): CatalogDatabase {
   try {
@@ -226,6 +228,19 @@ export function loadLocalAthletes(): Athlete[] {
 
 export function saveLocalAthletes(athletes: Athlete[]): void {
   localStorage.setItem(ATHLETES_KEY, JSON.stringify(athletes));
+}
+
+export function loadLocalPlans(): TrainingPlan[] {
+  try {
+    const raw = localStorage.getItem(PLANS_KEY);
+    return raw ? (JSON.parse(raw) as TrainingPlan[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalPlans(plans: TrainingPlan[]): void {
+  localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
 }
 
 export function isWorkoutAssignedToAthlete(workout: Workout, athlete: Athlete): boolean {

@@ -1,0 +1,1116 @@
+import React, { useMemo, useState } from 'react';
+import {
+  Calendar,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Edit3,
+  Flag,
+  Layers,
+  Plus,
+  PlusSquare,
+  Sparkles,
+  Target,
+  Trash2,
+  Trophy,
+  User,
+  X,
+} from 'lucide-react';
+import type {
+  Athlete,
+  CatalogDatabase,
+  CoachProfile,
+  PeriodizationPhase,
+  PeriodizationPhaseType,
+  PlanType,
+  Team,
+  TrainingPlan,
+  Workout,
+  WorkoutTargetScope,
+  ZoneId,
+} from '../types/swimming';
+import { formatDateBR, generateId } from '../utils/storage';
+
+interface PlanningManagerProps {
+  coach: CoachProfile;
+  activeTeam: Team | null;
+  athletes: Athlete[];
+  plans: TrainingPlan[];
+  workouts: Workout[];
+  catalog: CatalogDatabase;
+  onSavePlan: (plan: TrainingPlan) => Promise<void> | void;
+  onDeletePlan: (planId: string) => Promise<void> | void;
+  onCreateWorkoutFromPlan: (plan: TrainingPlan, phase?: PeriodizationPhase) => void;
+}
+
+const PLAN_TYPE_LABELS: Record<PlanType, { label: string; badgeClass: string }> = {
+  competicao_alvo: { label: 'Competição Alvo', badgeClass: 'plan-badge-comp' },
+  tempo_alvo: { label: 'Tempo Alvo (Atleta)', badgeClass: 'plan-badge-time' },
+  objetivo_geral: { label: 'Objetivo Geral', badgeClass: 'plan-badge-goal' },
+};
+
+const PHASE_META: Record<
+  PeriodizationPhaseType,
+  { label: string; color: string; defaultZones: ZoneId[] }
+> = {
+  base: { label: 'Base Geral', color: '#0d9488', defaultZones: ['Z1', 'Z2'] },
+  especifico: { label: 'Específico', color: '#0057ff', defaultZones: ['Z2', 'Z3', 'Z4'] },
+  pre_competitivo: {
+    label: 'Pré-Competitivo',
+    color: '#7c3aed',
+    defaultZones: ['Z4', 'Z5', 'VEL'],
+  },
+  polimento: { label: 'Polimento (Taper)', color: '#d97706', defaultZones: ['Z1', 'VEL'] },
+  competicao: { label: 'Competição Alvo', color: '#dc2626', defaultZones: ['VEL'] },
+  transicao: { label: 'Transição / Regenerativo', color: '#64748b', defaultZones: ['Z1'] },
+};
+
+function addDaysISO(isoDate: string, days: number): string {
+  const base = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(base.getTime())) return isoDate;
+  base.setDate(base.getDate() + days);
+  return base.toISOString().slice(0, 10);
+}
+
+function diffDaysISO(startIso: string, endIso: string): number {
+  const a = new Date(`${startIso}T00:00:00`);
+  const b = new Date(`${endIso}T00:00:00`);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0;
+  return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function createEmptyPhase(startDate: string, endDate: string): PeriodizationPhase {
+  return {
+    id: generateId('ph'),
+    name: 'Nova Fase',
+    phaseType: 'base',
+    startDate,
+    endDate,
+    focus: '',
+    targetZones: ['Z1', 'Z2'],
+    intensityLabel: 'Moderada · Controle Técnico',
+    weeklySessions: 5,
+    notes: '',
+  };
+}
+
+function buildSuggestedPhases(startDate: string, endDate: string): PeriodizationPhase[] {
+  const totalDays = Math.max(7, diffDaysISO(startDate, endDate));
+  const compDays = totalDays >= 21 ? 3 : 1;
+  const taperDays = Math.max(3, Math.round(totalDays * 0.12));
+  const preDays = Math.max(3, Math.round(totalDays * 0.25));
+  const specDays = Math.max(3, Math.round(totalDays * 0.3));
+  const baseDays = Math.max(2, totalDays - compDays - taperDays - preDays - specDays);
+
+  const d1 = addDaysISO(startDate, baseDays - 1);
+  const d2Start = addDaysISO(d1, 1);
+  const d2 = addDaysISO(d2Start, specDays - 1);
+  const d3Start = addDaysISO(d2, 1);
+  const d3 = addDaysISO(d3Start, preDays - 1);
+  const d4Start = addDaysISO(d3, 1);
+  const d4 = addDaysISO(d4Start, taperDays - 1);
+  const d5Start = addDaysISO(d4, 1);
+
+  return [
+    {
+      id: generateId('ph'),
+      name: '01 · Base Aeróbica & Técnica',
+      phaseType: 'base',
+      startDate,
+      endDate: d1,
+      focus: 'Construção aeróbica (Z1/Z2), eficiência de braçada, saídas e viradas.',
+      targetZones: ['Z1', 'Z2'],
+      intensityLabel: 'Volume progressivo · Baixa/Moderada',
+      weeklySessions: 5,
+      notes: 'Priorizar mecânica de nado e controle respiratório.',
+    },
+    {
+      id: generateId('ph'),
+      name: '02 · Desenvolvimento Específico',
+      phaseType: 'especifico',
+      startDate: d2Start,
+      endDate: d2,
+      focus: 'Limiar anaeróbico (Z3/Z4) e séries específicas da prova alvo.',
+      targetZones: ['Z2', 'Z3', 'Z4'],
+      intensityLabel: 'Moderada/Alta · Limiar',
+      weeklySessions: 6,
+      notes: 'Introduzir séries fracionadas em ritmo controlado.',
+    },
+    {
+      id: generateId('ph'),
+      name: '03 · Pré-Competitivo & Ritmo',
+      phaseType: 'pre_competitivo',
+      startDate: d3Start,
+      endDate: d3,
+      focus: 'Tolerância ao lactato (Z5), ritmo de prova e séries quebradas (Broken).',
+      targetZones: ['Z4', 'Z5', 'VEL'],
+      intensityLabel: 'Alta intensidade · Ritmo de Prova',
+      weeklySessions: 6,
+      notes: 'Monitorar parciais e frequência de braçada em velocidade de prova.',
+    },
+    {
+      id: generateId('ph'),
+      name: '04 · Polimento (Taper)',
+      phaseType: 'polimento',
+      startDate: d4Start,
+      endDate: d4,
+      focus: 'Redução gradual de volume mantendo estímulos curtos de velocidade máxima.',
+      targetZones: ['Z1', 'VEL'],
+      intensityLabel: 'Baixo volume · Alta qualidade',
+      weeklySessions: 4,
+      notes: 'Foco em recuperação neuromuscular, descanso e confiança.',
+    },
+    {
+      id: generateId('ph'),
+      name: '05 · Competição Alvo',
+      phaseType: 'competicao',
+      startDate: d5Start <= endDate ? d5Start : endDate,
+      endDate,
+      focus: 'Ativação pré-prova, estratégia de parciais e soltura pós-prova.',
+      targetZones: ['Z1', 'VEL'],
+      intensityLabel: 'Máxima · Dia de Prova',
+      weeklySessions: 3,
+      notes: 'Execução da estratégia planejada.',
+    },
+  ];
+}
+
+export const PlanningManager: React.FC<PlanningManagerProps> = ({
+  coach,
+  activeTeam,
+  athletes,
+  plans,
+  workouts,
+  catalog,
+  onSavePlan,
+  onDeletePlan,
+  onCreateWorkoutFromPlan,
+}) => {
+  const [today] = useState(() => new Date().toISOString().slice(0, 10));
+  const defaultEnd = addDaysISO(today, 56);
+
+  const [isFormOpen, setIsFormOpen] = useState(plans.length === 0);
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState<'all' | PlanType>('all');
+  const [expandedPlanId, setExpandedPlanId] = useState<string | null>(plans[0]?.id ?? null);
+
+  // Form state
+  const [title, setTitle] = useState('');
+  const [planType, setPlanType] = useState<PlanType>('competicao_alvo');
+  const [targetScope, setTargetScope] = useState<WorkoutTargetScope>('equipe');
+  const [targetCategory, setTargetCategory] = useState(activeTeam?.categories[0] ?? '');
+  const [targetAthleteId, setTargetAthleteId] = useState(athletes[0]?.id ?? '');
+  const [competitionName, setCompetitionName] = useState('');
+  const [competitionDate, setCompetitionDate] = useState(defaultEnd);
+  const [targetEvent, setTargetEvent] = useState('');
+  const [targetTime, setTargetTime] = useState('');
+  const [startDate, setStartDate] = useState(today);
+  const [endDate, setEndDate] = useState(defaultEnd);
+  const [objective, setObjective] = useState('');
+  const [notes, setNotes] = useState('');
+  const [phases, setPhases] = useState<PeriodizationPhase[]>(() =>
+    buildSuggestedPhases(today, defaultEnd)
+  );
+
+  const selectedAthlete = useMemo(
+    () => athletes.find((a) => a.id === targetAthleteId) ?? null,
+    [athletes, targetAthleteId]
+  );
+
+  const selectedAthleteEvents = useMemo(() => {
+    if (!selectedAthlete) return [];
+    const list: Array<{ label: string; event: string; bestTime: string; targetTime: string }> = [];
+    if (selectedAthlete.mainEvent) {
+      list.push({
+        label: `${selectedAthlete.mainEvent} (Principal)`,
+        event: selectedAthlete.mainEvent,
+        bestTime: selectedAthlete.bestTime,
+        targetTime: selectedAthlete.targetTime ?? '',
+      });
+    }
+    for (const ev of selectedAthlete.events ?? []) {
+      list.push({
+        label: ev.event,
+        event: ev.event,
+        bestTime: ev.bestTime,
+        targetTime: ev.targetTime,
+      });
+    }
+    return list;
+  }, [selectedAthlete]);
+
+  const resetForm = () => {
+    setEditingPlanId(null);
+    setTitle('');
+    setPlanType('competicao_alvo');
+    setTargetScope('equipe');
+    setTargetCategory(activeTeam?.categories[0] ?? '');
+    setTargetAthleteId(athletes[0]?.id ?? '');
+    setCompetitionName('');
+    setCompetitionDate(defaultEnd);
+    setTargetEvent('');
+    setTargetTime('');
+    setStartDate(today);
+    setEndDate(defaultEnd);
+    setObjective('');
+    setNotes('');
+    setPhases(buildSuggestedPhases(today, defaultEnd));
+  };
+
+  const openNewForm = () => {
+    resetForm();
+    setIsFormOpen(true);
+  };
+
+  const startEditPlan = (plan: TrainingPlan) => {
+    setEditingPlanId(plan.id);
+    setTitle(plan.title);
+    setPlanType(plan.planType);
+    setTargetScope(plan.targetScope);
+    setTargetCategory(plan.targetCategory ?? activeTeam?.categories[0] ?? '');
+    setTargetAthleteId(plan.targetAthleteId ?? athletes[0]?.id ?? '');
+    setCompetitionName(plan.competitionName ?? '');
+    setCompetitionDate(plan.competitionDate ?? plan.endDate);
+    setTargetEvent(plan.targetEvent ?? '');
+    setTargetTime(plan.targetTime ?? '');
+    setStartDate(plan.startDate);
+    setEndDate(plan.endDate);
+    setObjective(plan.objective);
+    setNotes(plan.notes);
+    setPhases(plan.phases.map((p) => ({ ...p, targetZones: [...p.targetZones] })));
+    setIsFormOpen(true);
+  };
+
+  const handleDuplicatePlan = async (plan: TrainingPlan) => {
+    const now = new Date().toISOString();
+    const copy: TrainingPlan = {
+      ...plan,
+      id: generateId('pln'),
+      title: `${plan.title} (Cópia)`,
+      phases: plan.phases.map((p) => ({
+        ...p,
+        id: generateId('ph'),
+        targetZones: [...p.targetZones],
+      })),
+      createdAt: now,
+      updatedAt: now,
+    };
+    await onSavePlan(copy);
+  };
+
+  const handleAddPhase = () => {
+    const lastEnd = phases.length > 0 ? phases[phases.length - 1].endDate : startDate;
+    const nextStart = phases.length > 0 ? addDaysISO(lastEnd, 1) : startDate;
+    const nextEnd = nextStart <= endDate ? endDate : nextStart;
+    setPhases([...phases, createEmptyPhase(nextStart, nextEnd)]);
+  };
+
+  const handleUpdatePhase = (
+    phaseId: string,
+    patch: Partial<PeriodizationPhase>
+  ) => {
+    setPhases(phases.map((p) => (p.id === phaseId ? { ...p, ...patch } : p)));
+  };
+
+  const togglePhaseZone = (phaseId: string, zoneId: ZoneId) => {
+    setPhases(
+      phases.map((p) => {
+        if (p.id !== phaseId) return p;
+        const exists = p.targetZones.includes(zoneId);
+        const nextZones = exists
+          ? p.targetZones.filter((z) => z !== zoneId)
+          : [...p.targetZones, zoneId];
+        return { ...p, targetZones: nextZones };
+      })
+    );
+  };
+
+  const handleRemovePhase = (phaseId: string) => {
+    setPhases(phases.filter((p) => p.id !== phaseId));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const now = new Date().toISOString();
+    const existing = editingPlanId ? plans.find((p) => p.id === editingPlanId) : null;
+
+    const computedTitle =
+      title.trim() ||
+      (planType === 'competicao_alvo' && competitionName.trim()
+        ? competitionName.trim()
+        : planType === 'tempo_alvo' && selectedAthlete && targetEvent.trim()
+          ? `${selectedAthlete.name} · ${targetEvent.trim()}`
+          : 'Planejamento de Ciclo');
+
+    const payload: TrainingPlan = {
+      id: existing?.id ?? generateId('pln'),
+      coachId: coach.id,
+      teamId: activeTeam?.id,
+      title: computedTitle,
+      planType,
+      targetScope,
+      targetCategory: targetScope === 'categoria' ? targetCategory : undefined,
+      targetAthleteId: targetScope === 'atletas' ? targetAthleteId || undefined : undefined,
+      targetEvent: targetEvent.trim() || undefined,
+      targetTime: targetTime.trim() || undefined,
+      competitionName: competitionName.trim() || undefined,
+      competitionDate: competitionDate || undefined,
+      startDate,
+      endDate,
+      objective: objective.trim(),
+      notes: notes.trim(),
+      phases,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    await onSavePlan(payload);
+    setExpandedPlanId(payload.id);
+    setIsFormOpen(false);
+    resetForm();
+  };
+
+  const filteredPlans = useMemo(() => {
+    return plans.filter((p) => {
+      if (typeFilter !== 'all' && p.planType !== typeFilter) return false;
+      return true;
+    });
+  }, [plans, typeFilter]);
+
+  return (
+    <div>
+      <div className="page-header">
+        <div className="page-title-group">
+          <span className="page-eyebrow">Periodização & Macrociclos</span>
+          <h1 className="page-title">Planejamento & Metas</h1>
+          <p className="page-subtitle">
+            Crie planejamentos detalhados para competições alvo, tempos alvo de atletas específicos e
+            estruture fases de periodização conectadas aos seus treinos.
+          </p>
+        </div>
+
+        <div className="page-actions">
+          <button type="button" className="btn btn-primary" onClick={openNewForm}>
+            <Plus size={15} />
+            Novo Planejamento
+          </button>
+        </div>
+      </div>
+
+      {/* Create / Edit Plan Form */}
+      {isFormOpen && (
+        <section className="surface-card" style={{ marginBottom: 20 }}>
+          <div className="card-header">
+            <h2 className="card-title">
+              <Target size={15} />{' '}
+              {editingPlanId ? 'Editar Planejamento & Periodização' : 'Novo Planejamento & Periodização'}
+            </h2>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                setIsFormOpen(false);
+                resetForm();
+              }}
+            >
+              <X size={14} /> Fechar
+            </button>
+          </div>
+
+          <form className="card-section" onSubmit={handleSubmit}>
+            <div className="form-grid">
+              <div className="field col-12">
+                <label>Tipo de Planejamento</label>
+                <div className="segmented">
+                  <button
+                    type="button"
+                    className={planType === 'competicao_alvo' ? 'active' : ''}
+                    onClick={() => setPlanType('competicao_alvo')}
+                  >
+                    <Trophy size={13} style={{ marginRight: 5, verticalAlign: '-2px' }} />
+                    Competição Alvo
+                  </button>
+                  <button
+                    type="button"
+                    className={planType === 'tempo_alvo' ? 'active' : ''}
+                    onClick={() => {
+                      setPlanType('tempo_alvo');
+                      setTargetScope('atletas');
+                    }}
+                  >
+                    <Target size={13} style={{ marginRight: 5, verticalAlign: '-2px' }} />
+                    Tempo Alvo (Atleta)
+                  </button>
+                  <button
+                    type="button"
+                    className={planType === 'objetivo_geral' ? 'active' : ''}
+                    onClick={() => setPlanType('objetivo_geral')}
+                  >
+                    <Flag size={13} style={{ marginRight: 5, verticalAlign: '-2px' }} />
+                    Objetivo Geral / Ciclo
+                  </button>
+                </div>
+              </div>
+
+              <div className="field col-6">
+                <label>Título do Planejamento</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Ex: Campeonato Brasileiro Absoluto 2026"
+                  required
+                />
+              </div>
+
+              <div className="field col-3">
+                <label>Início do Ciclo</label>
+                <input
+                  type="date"
+                  className="input mono-num"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="field col-3">
+                <label>Fim / Data Alvo</label>
+                <input
+                  type="date"
+                  className="input mono-num"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="field col-12">
+                <label>Direcionamento</label>
+                <div className="segmented" style={{ marginBottom: 8 }}>
+                  <button
+                    type="button"
+                    className={targetScope === 'equipe' ? 'active' : ''}
+                    onClick={() => setTargetScope('equipe')}
+                  >
+                    Toda a Equipe
+                  </button>
+                  <button
+                    type="button"
+                    className={targetScope === 'categoria' ? 'active' : ''}
+                    onClick={() => setTargetScope('categoria')}
+                  >
+                    Categoria / Grupo
+                  </button>
+                  <button
+                    type="button"
+                    className={targetScope === 'atletas' ? 'active' : ''}
+                    onClick={() => setTargetScope('atletas')}
+                  >
+                    Atleta Específico
+                  </button>
+                </div>
+
+                {targetScope === 'categoria' && activeTeam && (
+                  <select
+                    className="select"
+                    value={targetCategory}
+                    onChange={(e) => setTargetCategory(e.target.value)}
+                  >
+                    {activeTeam.categories.map((cat) => (
+                      <option key={cat} value={cat}>
+                        Categoria: {cat}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {targetScope === 'atletas' && (
+                  <div>
+                    {athletes.length === 0 ? (
+                      <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+                        Cadastre atletas na aba Equipe para vincular um tempo alvo individual.
+                      </span>
+                    ) : (
+                      <>
+                        <select
+                          className="select"
+                          value={targetAthleteId}
+                          onChange={(e) => setTargetAthleteId(e.target.value)}
+                        >
+                          {athletes.map((ath) => (
+                            <option key={ath.id} value={ath.id}>
+                              {ath.name} ({ath.category})
+                            </option>
+                          ))}
+                        </select>
+
+                        {selectedAthleteEvents.length > 0 && (
+                          <div style={{ marginTop: 8 }}>
+                            <span
+                              style={{
+                                display: 'block',
+                                fontSize: 11,
+                                color: 'var(--ink-muted)',
+                                marginBottom: 4,
+                              }}
+                            >
+                              Provas cadastradas do atleta (clique para preencher prova e tempo meta):
+                            </span>
+                            <div className="chip-row">
+                              {selectedAthleteEvents.map((ev, idx) => (
+                                <button
+                                  key={`${ev.event}-${idx}`}
+                                  type="button"
+                                  className={`chip-btn ${targetEvent === ev.event ? 'selected' : ''}`}
+                                  onClick={() => {
+                                    setTargetEvent(ev.event);
+                                    if (ev.targetTime) setTargetTime(ev.targetTime);
+                                  }}
+                                >
+                                  {ev.label}
+                                  {ev.bestTime ? ` · Atual: ${ev.bestTime}` : ''}
+                                  {ev.targetTime ? ` → Meta: ${ev.targetTime}` : ''}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {planType === 'competicao_alvo' && (
+                <>
+                  <div className="field col-6">
+                    <label>Nome da Competição Alvo</label>
+                    <input
+                      type="text"
+                      className="input"
+                      value={competitionName}
+                      onChange={(e) => setCompetitionName(e.target.value)}
+                      placeholder="Ex: Troféu Brasil / Campeonato Paulista"
+                    />
+                  </div>
+                  <div className="field col-6">
+                    <label>Data da Competição</label>
+                    <input
+                      type="date"
+                      className="input mono-num"
+                      value={competitionDate}
+                      onChange={(e) => setCompetitionDate(e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="field col-4">
+                <label>Prova Alvo (opcional)</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={targetEvent}
+                  onChange={(e) => setTargetEvent(e.target.value)}
+                  placeholder="Ex: 100m Livre"
+                />
+              </div>
+
+              <div className="field col-4">
+                <label>Tempo Alvo / Meta (opcional)</label>
+                <input
+                  type="text"
+                  className="input mono-num"
+                  value={targetTime}
+                  onChange={(e) => setTargetTime(e.target.value)}
+                  placeholder="Ex: 50.50s"
+                />
+              </div>
+
+              <div className="field col-4">
+                <label>Objetivo Principal do Ciclo</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={objective}
+                  onChange={(e) => setObjective(e.target.value)}
+                  placeholder="Ex: Classificação para final A / Sub-51s"
+                />
+              </div>
+
+              <div className="field col-12">
+                <label>Estratégia & Observações do Planejamento</label>
+                <textarea
+                  className="textarea"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Estratégia de parciais, metas técnicas, controle de carga, testes intermediários..."
+                />
+              </div>
+            </div>
+
+            {/* Periodization Phases Builder */}
+            <div className="periodization-builder">
+              <div className="periodization-builder-head">
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>
+                    <Layers size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
+                    Periodização Detalhada ({phases.length} fases)
+                  </h3>
+                  <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+                    Divida o ciclo em mesociclos/fases com datas, foco, zonas alvo e sessões por semana.
+                  </span>
+                </div>
+                <div className="composer-actions" style={{ margin: 0 }}>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => setPhases(buildSuggestedPhases(startDate, endDate))}
+                  >
+                    <Sparkles size={13} /> Gerar Periodização Sugerida
+                  </button>
+                  <button type="button" className="btn btn-sm" onClick={handleAddPhase}>
+                    <Plus size={13} /> Adicionar Fase
+                  </button>
+                </div>
+              </div>
+
+              {phases.length === 0 ? (
+                <div style={{ fontSize: 13, color: 'var(--ink-muted)', padding: '12px 0' }}>
+                  Nenhuma fase adicionada ainda. Clique em "Gerar Periodização Sugerida" ou
+                  "Adicionar Fase".
+                </div>
+              ) : (
+                <div className="phases-editor-list">
+                  {phases.map((phase) => (
+                    <div key={phase.id} className="phase-editor-card">
+                      <div className="phase-editor-top">
+                        <span
+                          className="phase-color-dot"
+                          style={{ backgroundColor: PHASE_META[phase.phaseType].color }}
+                        />
+                        <input
+                          type="text"
+                          className="input"
+                          style={{ fontWeight: 600 }}
+                          value={phase.name}
+                          onChange={(e) => handleUpdatePhase(phase.id, { name: e.target.value })}
+                          placeholder="Nome da fase"
+                        />
+                        <select
+                          className="select"
+                          style={{ maxWidth: 185 }}
+                          value={phase.phaseType}
+                          onChange={(e) => {
+                            const nextType = e.target.value as PeriodizationPhaseType;
+                            handleUpdatePhase(phase.id, {
+                              phaseType: nextType,
+                              targetZones: PHASE_META[nextType].defaultZones,
+                            });
+                          }}
+                        >
+                          {Object.entries(PHASE_META).map(([key, meta]) => (
+                            <option key={key} value={key}>
+                              {meta.label}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="btn btn-danger-ghost btn-icon"
+                          title="Remover fase"
+                          onClick={() => handleRemovePhase(phase.id)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+
+                      <div className="form-grid" style={{ marginTop: 10 }}>
+                        <div className="field col-3">
+                          <label>Início</label>
+                          <input
+                            type="date"
+                            className="input mono-num"
+                            value={phase.startDate}
+                            onChange={(e) =>
+                              handleUpdatePhase(phase.id, { startDate: e.target.value })
+                            }
+                          />
+                        </div>
+                        <div className="field col-3">
+                          <label>Fim</label>
+                          <input
+                            type="date"
+                            className="input mono-num"
+                            value={phase.endDate}
+                            onChange={(e) =>
+                              handleUpdatePhase(phase.id, { endDate: e.target.value })
+                            }
+                          />
+                        </div>
+                        <div className="field col-3">
+                          <label>Sessões / Semana</label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={14}
+                            className="input mono-num"
+                            value={phase.weeklySessions}
+                            onChange={(e) =>
+                              handleUpdatePhase(phase.id, {
+                                weeklySessions: Math.max(1, Number(e.target.value) || 1),
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="field col-3">
+                          <label>Intensidade</label>
+                          <input
+                            type="text"
+                            className="input"
+                            value={phase.intensityLabel}
+                            onChange={(e) =>
+                              handleUpdatePhase(phase.id, { intensityLabel: e.target.value })
+                            }
+                            placeholder="Ex: Alta · Limiar"
+                          />
+                        </div>
+
+                        <div className="field col-6">
+                          <label>Foco Técnico & Fisiológico</label>
+                          <input
+                            type="text"
+                            className="input"
+                            value={phase.focus}
+                            onChange={(e) =>
+                              handleUpdatePhase(phase.id, { focus: e.target.value })
+                            }
+                            placeholder="Ex: Base aeróbica e controle de virada"
+                          />
+                        </div>
+
+                        <div className="field col-6">
+                          <label>Zonas Alvo da Fase</label>
+                          <div className="chip-row">
+                            {catalog.zones.map((z) => {
+                              const selected = phase.targetZones.includes(z.id);
+                              return (
+                                <button
+                                  key={z.id}
+                                  type="button"
+                                  className={`chip-btn ${selected ? 'selected' : ''}`}
+                                  onClick={() => togglePhaseZone(phase.id, z.id)}
+                                >
+                                  {z.code}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="field col-12">
+                          <label>Detalhamento / Microciclos / Testes</label>
+                          <input
+                            type="text"
+                            className="input"
+                            value={phase.notes}
+                            onChange={(e) =>
+                              handleUpdatePhase(phase.id, { notes: e.target.value })
+                            }
+                            placeholder="Ex: Semana 1-2 volume crescente, Semana 3 teste de 200m..."
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="composer-actions" style={{ marginTop: 16 }}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  setIsFormOpen(false);
+                  resetForm();
+                }}
+              >
+                Cancelar
+              </button>
+              <button type="submit" className="btn btn-primary">
+                <Check size={15} />
+                {editingPlanId ? 'Salvar Alterações' : 'Salvar Planejamento'}
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
+
+      {/* Filter Bar */}
+      <div className="filters-bar">
+        <div className="segmented">
+          <button
+            type="button"
+            className={typeFilter === 'all' ? 'active' : ''}
+            onClick={() => setTypeFilter('all')}
+          >
+            Todos ({plans.length})
+          </button>
+          <button
+            type="button"
+            className={typeFilter === 'competicao_alvo' ? 'active' : ''}
+            onClick={() => setTypeFilter('competicao_alvo')}
+          >
+            Competições Alvo
+          </button>
+          <button
+            type="button"
+            className={typeFilter === 'tempo_alvo' ? 'active' : ''}
+            onClick={() => setTypeFilter('tempo_alvo')}
+          >
+            Tempos Alvo
+          </button>
+          <button
+            type="button"
+            className={typeFilter === 'objetivo_geral' ? 'active' : ''}
+            onClick={() => setTypeFilter('objetivo_geral')}
+          >
+            Objetivos Gerais
+          </button>
+        </div>
+      </div>
+
+      {/* Plans List */}
+      {filteredPlans.length === 0 ? (
+        <div
+          className="surface-card card-section"
+          style={{ textAlign: 'center', padding: '48px 24px' }}
+        >
+          <Target size={28} style={{ color: 'var(--ink-muted)', marginBottom: 8 }} />
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
+            Nenhum planejamento cadastrado
+          </div>
+          <p style={{ margin: '0 0 16px 0', color: 'var(--ink-secondary)', fontSize: 13 }}>
+            Crie um planejamento com competição alvo, tempo alvo de atleta e fases de periodização.
+          </p>
+          <button type="button" className="btn btn-primary" onClick={openNewForm}>
+            <Plus size={15} /> Criar Primeiro Planejamento
+          </button>
+        </div>
+      ) : (
+        <div className="plans-stack">
+          {filteredPlans.map((plan) => {
+            const targetAthlete = plan.targetAthleteId
+              ? athletes.find((a) => a.id === plan.targetAthleteId)
+              : null;
+            const daysRemaining = diffDaysISO(today, plan.competitionDate || plan.endDate);
+            const linkedWorkoutsCount = workouts.filter((w) => w.planId === plan.id).length;
+            const isExpanded = expandedPlanId === plan.id;
+
+            const totalPlanDays = Math.max(1, diffDaysISO(plan.startDate, plan.endDate) + 1);
+
+            return (
+              <article key={plan.id} className="surface-card plan-card">
+                <div className="plan-card-header">
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span className={`plan-badge ${PLAN_TYPE_LABELS[plan.planType].badgeClass}`}>
+                        {PLAN_TYPE_LABELS[plan.planType].label}
+                      </span>
+                      {plan.targetScope === 'equipe' && (
+                        <span className="db-chip">Toda a Equipe</span>
+                      )}
+                      {plan.targetScope === 'categoria' && plan.targetCategory && (
+                        <span className="db-chip">Grupo: {plan.targetCategory}</span>
+                      )}
+                      {plan.targetScope === 'atletas' && targetAthlete && (
+                        <span className="db-chip">
+                          <User size={11} /> {targetAthlete.name}
+                        </span>
+                      )}
+                      {plan.targetEvent && (
+                        <span className="db-chip">
+                          <strong>{plan.targetEvent}</strong>
+                          {plan.targetTime ? ` → Meta ${plan.targetTime}` : ''}
+                        </span>
+                      )}
+                    </div>
+
+                    <h3 className="plan-card-title">{plan.title}</h3>
+
+                    <div className="workout-card-meta">
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <Calendar size={12} /> {formatDateBR(plan.startDate)} →{' '}
+                        {formatDateBR(plan.endDate)}
+                      </span>
+                      {plan.competitionName && (
+                        <>
+                          <span>·</span>
+                          <span>
+                            <Trophy size={12} style={{ verticalAlign: '-2px', marginRight: 3 }} />
+                            {plan.competitionName}
+                          </span>
+                        </>
+                      )}
+                      <span>·</span>
+                      <span className="mono-num">
+                        {daysRemaining > 0
+                          ? `Faltam ${daysRemaining} dias`
+                          : daysRemaining === 0
+                            ? 'Hoje'
+                            : `Encerrado há ${Math.abs(daysRemaining)}d`}
+                      </span>
+                      <span>·</span>
+                      <span className="mono-num">{linkedWorkoutsCount} treinos vinculados</span>
+                    </div>
+                  </div>
+
+                  <div className="series-actions">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={() => onCreateWorkoutFromPlan(plan)}
+                    >
+                      <PlusSquare size={13} /> Criar Treino
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-icon"
+                      title="Editar planejamento"
+                      onClick={() => startEditPlan(plan)}
+                    >
+                      <Edit3 size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-icon"
+                      title="Duplicar planejamento"
+                      onClick={() => handleDuplicatePlan(plan)}
+                    >
+                      <Copy size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger-ghost btn-icon"
+                      title="Excluir planejamento"
+                      onClick={() => onDeletePlan(plan.id)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-icon"
+                      title={isExpanded ? 'Recolher fases' : 'Expandir fases'}
+                      onClick={() => setExpandedPlanId(isExpanded ? null : plan.id)}
+                    >
+                      {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                    </button>
+                  </div>
+                </div>
+
+                {(plan.objective || plan.notes) && (
+                  <div className="plan-summary-strip">
+                    {plan.objective && (
+                      <div>
+                        <strong>Objetivo:</strong> {plan.objective}
+                      </div>
+                    )}
+                    {plan.notes && (
+                      <div style={{ color: 'var(--ink-secondary)', marginTop: 2 }}>{plan.notes}</div>
+                    )}
+                  </div>
+                )}
+
+                {/* Proportional Periodization Timeline Bar */}
+                {plan.phases.length > 0 && (
+                  <div className="plan-timeline-wrap">
+                    <div className="plan-timeline-bar">
+                      {plan.phases.map((ph) => {
+                        const phDays = Math.max(1, diffDaysISO(ph.startDate, ph.endDate) + 1);
+                        const pct = Math.max(8, Math.round((phDays / totalPlanDays) * 100));
+                        return (
+                          <div
+                            key={ph.id}
+                            className="plan-timeline-seg"
+                            style={{
+                              flex: `${pct} 1 0%`,
+                              backgroundColor: PHASE_META[ph.phaseType].color,
+                            }}
+                            title={`${ph.name}: ${formatDateBR(ph.startDate)} – ${formatDateBR(ph.endDate)}`}
+                          >
+                            <span>{ph.name}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Expanded Phases Detail */}
+                {isExpanded && plan.phases.length > 0 && (
+                  <div className="plan-phases-detail">
+                    {plan.phases.map((ph) => {
+                      const phaseWorkouts = workouts.filter(
+                        (w) => w.planId === plan.id && w.phaseId === ph.id
+                      ).length;
+
+                      return (
+                        <div key={ph.id} className="phase-detail-row">
+                          <div className="phase-detail-left">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <span
+                                className="phase-color-dot"
+                                style={{ backgroundColor: PHASE_META[ph.phaseType].color }}
+                              />
+                              <strong style={{ fontSize: 13 }}>{ph.name}</strong>
+                              <span className="mono-num" style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
+                                {formatDateBR(ph.startDate)} → {formatDateBR(ph.endDate)}
+                              </span>
+                              <span className="db-chip">{ph.weeklySessions}x/sem</span>
+                              {ph.targetZones.map((z) => (
+                                <span key={z} className="zone-mini-pill">
+                                  {z}
+                                </span>
+                              ))}
+                            </div>
+                            {ph.focus && (
+                              <div style={{ fontSize: 12, color: 'var(--ink-primary)', marginTop: 4 }}>
+                                <strong>Foco:</strong> {ph.focus}
+                              </div>
+                            )}
+                            {ph.notes && (
+                              <div style={{ fontSize: 12, color: 'var(--ink-secondary)', marginTop: 2 }}>
+                                {ph.notes}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="phase-detail-right">
+                            <span className="mono-num" style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
+                              {phaseWorkouts} {phaseWorkouts === 1 ? 'treino' : 'treinos'}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              onClick={() => onCreateWorkoutFromPlan(plan, ph)}
+                            >
+                              <Plus size={13} /> Treino nesta Fase
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};

@@ -11,6 +11,12 @@ const workoutPayloadValidator = {
   ),
   targetCategory: v.optional(v.string()),
   targetAthleteIds: v.optional(v.array(v.string())),
+  planId: v.optional(v.string()),
+  phaseId: v.optional(v.string()),
+  periodizationPhase: v.optional(v.string()),
+  targetCompetition: v.optional(v.string()),
+  targetEvent: v.optional(v.string()),
+  targetTime: v.optional(v.string()),
   title: v.string(),
   date: v.string(),
   poolLength: v.union(v.literal(25), v.literal(50)),
@@ -29,6 +35,12 @@ function mapWorkoutDoc(doc: {
   targetScope?: 'equipe' | 'categoria' | 'atletas';
   targetCategory?: string;
   targetAthleteIds?: string[];
+  planId?: string;
+  phaseId?: string;
+  periodizationPhase?: string;
+  targetCompetition?: string;
+  targetEvent?: string;
+  targetTime?: string;
   title: string;
   date: string;
   poolLength: 25 | 50;
@@ -56,6 +68,12 @@ function mapWorkoutDoc(doc: {
     targetScope: doc.targetScope,
     targetCategory: doc.targetCategory,
     targetAthleteIds: doc.targetAthleteIds,
+    planId: doc.planId,
+    phaseId: doc.phaseId,
+    periodizationPhase: doc.periodizationPhase,
+    targetCompetition: doc.targetCompetition,
+    targetEvent: doc.targetEvent,
+    targetTime: doc.targetTime,
     title: doc.title,
     date: doc.date,
     poolLength: doc.poolLength,
@@ -98,6 +116,12 @@ export const upsert = mutation({
       targetScope: workout.targetScope,
       targetCategory: workout.targetCategory,
       targetAthleteIds: workout.targetAthleteIds,
+      planId: workout.planId,
+      phaseId: workout.phaseId,
+      periodizationPhase: workout.periodizationPhase,
+      targetCompetition: workout.targetCompetition,
+      targetEvent: workout.targetEvent,
+      targetTime: workout.targetTime,
       title: workout.title,
       date: workout.date,
       poolLength: workout.poolLength,

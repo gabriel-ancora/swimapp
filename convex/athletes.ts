@@ -1,5 +1,6 @@
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
+import { athleteEventGoalValidator } from './schema';
 
 const athletePayloadValidator = {
   id: v.string(),
@@ -8,6 +9,8 @@ const athletePayloadValidator = {
   category: v.string(),
   mainEvent: v.string(),
   bestTime: v.string(),
+  targetTime: v.optional(v.string()),
+  events: v.optional(v.array(athleteEventGoalValidator)),
   status: v.union(v.literal('Ativo'), v.literal('Recuperação'), v.literal('Inativo')),
   notes: v.string(),
   createdAt: v.string(),
@@ -31,6 +34,8 @@ export const listByTeam = query({
       category: d.category,
       mainEvent: d.mainEvent,
       bestTime: d.bestTime,
+      targetTime: d.targetTime,
+      events: d.events,
       status: d.status,
       notes: d.notes,
       createdAt: d.createdAt,
@@ -56,6 +61,8 @@ export const upsert = mutation({
       category: athlete.category,
       mainEvent: athlete.mainEvent,
       bestTime: athlete.bestTime,
+      targetTime: athlete.targetTime,
+      events: athlete.events,
       status: athlete.status,
       notes: athlete.notes,
       createdAt: athlete.createdAt,

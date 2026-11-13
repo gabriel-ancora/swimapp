@@ -11,6 +11,7 @@ import {
   Database,
   LogOut,
   PlusSquare,
+  Target,
   Users,
   Waves,
 } from 'lucide-react';
@@ -20,6 +21,7 @@ import { AthleteAnalytics } from './components/AthleteAnalytics';
 import { AuthScreen } from './components/AuthScreen';
 import { CatalogManager } from './components/CatalogManager';
 import { MyWorkouts } from './components/MyWorkouts';
+import { PlanningManager } from './components/PlanningManager';
 import { PrintSheet } from './components/PrintSheet';
 import { TeamManager } from './components/TeamManager';
 import { WorkoutBuilder } from './components/WorkoutBuilder';
@@ -29,7 +31,9 @@ import type {
   Athlete,
   CatalogDatabase,
   CoachProfile,
+  PeriodizationPhase,
   Team,
+  TrainingPlan,
   Workout,
 } from './types/swimming';
 import {
@@ -39,6 +43,7 @@ import {
   loadCatalog,
   loadLocalAthletes,
   loadLocalCoaches,
+  loadLocalPlans,
   loadLocalTeams,
   loadSession,
   loadWorkouts,
@@ -46,6 +51,7 @@ import {
   saveCatalog,
   saveLocalAthletes,
   saveLocalCoaches,
+  saveLocalPlans,
   saveLocalTeams,
   saveSession,
   saveWorkouts,
@@ -104,6 +110,16 @@ const athleteRemoveMutation = makeFunctionReference<'mutation', { id: string }, 
   'athletes:remove'
 );
 
+const plansListQuery = makeFunctionReference<'query', { coachId: string }, TrainingPlan[]>(
+  'plans:listByCoach'
+);
+const planUpsertMutation = makeFunctionReference<'mutation', { plan: TrainingPlan }, void>(
+  'plans:upsert'
+);
+const planRemoveMutation = makeFunctionReference<'mutation', { id: string }, void>(
+  'plans:remove'
+);
+
 function createEmptyWorkout(
   catalog: CatalogDatabase,
   coach: CoachProfile,
@@ -135,12 +151,15 @@ interface AppShellProps {
   teams: Team[];
   activeTeam: Team | null;
   athletes: Athlete[];
+  plans: TrainingPlan[];
   syncMode: 'cloud' | 'local';
   isLoadingCloud?: boolean;
   onSelectTeam: (teamId: string) => void;
   onSaveTeam: (team: Team) => void | Promise<void>;
   onSaveAthlete: (athlete: Athlete) => void | Promise<void>;
   onDeleteAthlete: (athleteId: string) => void | Promise<void>;
+  onSavePlan: (plan: TrainingPlan) => void | Promise<void>;
+  onDeletePlan: (planId: string) => void | Promise<void>;
   onUpdateCatalog: (next: CatalogDatabase) => void | Promise<void>;
   onResetCatalog: () => void | Promise<void>;
   onPersistWorkout: (workout: Workout, isEditing: boolean) => void | Promise<void>;
@@ -155,12 +174,15 @@ function AppShell({
   teams,
   activeTeam,
   athletes,
+  plans,
   syncMode,
   isLoadingCloud = false,
   onSelectTeam,
   onSaveTeam,
   onSaveAthlete,
   onDeleteAthlete,
+  onSavePlan,
+  onDeletePlan,
   onUpdateCatalog,
   onResetCatalog,
   onPersistWorkout,
@@ -269,6 +291,30 @@ function AppShell({
     showToast('Treino excluído.');
   };
 
+  const handleCreateWorkoutFromPlan = (plan: TrainingPlan, phase?: PeriodizationPhase) => {
+    const base = createEmptyWorkout(catalog, coach, activeTeam);
+    setEditingId(null);
+    setDraft({
+      ...base,
+      teamId: plan.teamId ?? base.teamId,
+      planId: plan.id,
+      phaseId: phase?.id,
+      periodizationPhase: phase?.name ?? plan.phases[0]?.name,
+      targetCompetition: plan.competitionName || plan.title,
+      targetEvent: plan.targetEvent,
+      targetTime: plan.targetTime,
+      targetScope: plan.targetScope,
+      targetCategory: plan.targetScope === 'categoria' ? plan.targetCategory : undefined,
+      targetAthleteIds:
+        plan.targetScope === 'atletas' && plan.targetAthleteId
+          ? [plan.targetAthleteId]
+          : undefined,
+      title: phase ? `${plan.title} — ${phase.name}` : plan.title,
+      generalNotes: phase?.focus ? `Foco da fase: ${phase.focus}` : '',
+    });
+    setActiveTab('novo');
+  };
+
   return (
     <>
       <div className="app-shell no-print">
@@ -295,6 +341,15 @@ function AppShell({
               >
                 <PlusSquare size={15} />
                 Novo Treino
+              </button>
+              <button
+                type="button"
+                className={`nav-tab ${activeTab === 'planejamento' ? 'active' : ''}`}
+                onClick={() => setActiveTab('planejamento')}
+              >
+                <Target size={15} />
+                Planejamento
+                <span className="nav-badge">{plans.length}</span>
               </button>
               <button
                 type="button"
@@ -376,10 +431,32 @@ function AppShell({
               catalog={catalog}
               activeTeam={activeTeam}
               athletes={athletes}
+              plans={plans}
               onChangeDraft={setDraft}
               onSaveWorkout={handleSaveWorkout}
               onPrintWorkout={() => handlePrint(draft)}
               onResetDraft={handleResetDraft}
+              onGoToPlanning={() => setActiveTab('planejamento')}
+            />
+          )}
+
+          {activeTab === 'planejamento' && (
+            <PlanningManager
+              coach={coach}
+              activeTeam={activeTeam}
+              athletes={athletes}
+              plans={plans}
+              workouts={workouts}
+              catalog={catalog}
+              onSavePlan={async (plan) => {
+                await onSavePlan(plan);
+                showToast('Planejamento salvo com sucesso.');
+              }}
+              onDeletePlan={async (planId) => {
+                await onDeletePlan(planId);
+                showToast('Planejamento removido.');
+              }}
+              onCreateWorkoutFromPlan={handleCreateWorkoutFromPlan}
             />
           )}
 
@@ -416,6 +493,7 @@ function AppShell({
               activeTeam={activeTeam}
               athletes={athletes}
               workouts={workouts}
+              plans={plans}
               catalog={catalog}
               onEditWorkout={handleEditFromList}
               onGoToTeam={() => setActiveTab('equipe')}
@@ -476,6 +554,7 @@ function ConvexApp({
   const cloudWorkouts = useQuery(workoutsListQuery, { coachId: coach.id });
   const cloudCatalog = useQuery(catalogGetQuery, {});
   const cloudTeams = useQuery(teamsListQuery, { coachId: coach.id });
+  const cloudPlans = useQuery(plansListQuery, { coachId: coach.id });
 
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const activeTeam = useMemo(() => {
@@ -494,6 +573,8 @@ function ConvexApp({
   const upsertTeam = useMutation(teamUpsertMutation);
   const upsertAthlete = useMutation(athleteUpsertMutation);
   const removeAthlete = useMutation(athleteRemoveMutation);
+  const upsertPlan = useMutation(planUpsertMutation);
+  const removePlan = useMutation(planRemoveMutation);
 
   const catalog = useMemo<CatalogDatabase>(() => {
     if (!cloudCatalog) return DEFAULT_CATALOG;
@@ -545,6 +626,7 @@ function ConvexApp({
       teams={cloudTeams ?? []}
       activeTeam={activeTeam}
       athletes={cloudAthletes ?? []}
+      plans={cloudPlans ?? []}
       syncMode="cloud"
       isLoadingCloud={cloudWorkouts === undefined}
       onSelectTeam={setSelectedTeamId}
@@ -557,6 +639,12 @@ function ConvexApp({
       }}
       onDeleteAthlete={async (id) => {
         await removeAthlete({ id });
+      }}
+      onSavePlan={async (plan) => {
+        await upsertPlan({ plan });
+      }}
+      onDeletePlan={async (id) => {
+        await removePlan({ id });
       }}
       onUpdateCatalog={handleUpdateCatalog}
       onResetCatalog={handleResetCatalog}
@@ -618,6 +706,9 @@ function LocalApp({
   );
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const [athletes, setAthletes] = useState<Athlete[]>(() => loadLocalAthletes());
+  const [plans, setPlans] = useState<TrainingPlan[]>(() =>
+    loadLocalPlans().filter((p) => p.coachId === coach.id)
+  );
 
   const activeTeam = useMemo(() => {
     return teams.find((t) => t.id === selectedTeamId) ?? teams[0] ?? null;
@@ -636,6 +727,7 @@ function LocalApp({
       teams={teams}
       activeTeam={activeTeam}
       athletes={activeAthletes}
+      plans={plans}
       syncMode="local"
       onSelectTeam={setSelectedTeamId}
       onSaveTeam={(team) => {
@@ -658,6 +750,19 @@ function LocalApp({
         const next = athletes.filter((a) => a.id !== id);
         setAthletes(next);
         saveLocalAthletes(next);
+      }}
+      onSavePlan={(plan) => {
+        const all = loadLocalPlans();
+        const exists = all.some((p) => p.id === plan.id);
+        const nextAll = exists ? all.map((p) => (p.id === plan.id ? plan : p)) : [plan, ...all];
+        saveLocalPlans(nextAll);
+        setPlans(nextAll.filter((p) => p.coachId === coach.id));
+      }}
+      onDeletePlan={(id) => {
+        const all = loadLocalPlans();
+        const nextAll = all.filter((p) => p.id !== id);
+        saveLocalPlans(nextAll);
+        setPlans(nextAll.filter((p) => p.coachId === coach.id));
       }}
       onUpdateCatalog={(next) => {
         setCatalog(next);

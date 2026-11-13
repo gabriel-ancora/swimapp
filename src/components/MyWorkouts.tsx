@@ -37,6 +37,9 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
         wk.title.toLowerCase().includes(q) ||
         wk.objective.toLowerCase().includes(q) ||
         wk.coach.toLowerCase().includes(q) ||
+        (wk.targetCompetition ?? '').toLowerCase().includes(q) ||
+        (wk.periodizationPhase ?? '').toLowerCase().includes(q) ||
+        (wk.targetEvent ?? '').toLowerCase().includes(q) ||
         wk.items.some((i) => i.seriesType.toLowerCase().includes(q))
       );
     });
@@ -135,6 +138,27 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
                       </span>
                       <span>·</span>
                       <span>{wk.objective}</span>
+                      {wk.periodizationPhase && (
+                        <>
+                          <span>·</span>
+                          <span className="db-chip">{wk.periodizationPhase}</span>
+                        </>
+                      )}
+                      {wk.targetCompetition && (
+                        <>
+                          <span>·</span>
+                          <span className="db-chip">Alvo: {wk.targetCompetition}</span>
+                        </>
+                      )}
+                      {wk.targetEvent && (
+                        <>
+                          <span>·</span>
+                          <span className="db-chip">
+                            {wk.targetEvent}
+                            {wk.targetTime ? ` (${wk.targetTime})` : ''}
+                          </span>
+                        </>
+                      )}
                       {wk.targetScope === 'categoria' && wk.targetCategory && (
                         <>
                           <span>·</span>

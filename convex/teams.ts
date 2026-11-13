@@ -8,7 +8,7 @@ const teamPayloadValidator = {
   club: v.string(),
   accentColor: v.string(),
   categories: v.array(v.string()),
-  weeklyVolumeGoalMeters: v.number(),
+  weeklyVolumeGoalMeters: v.optional(v.number()),
   weeklySessionsGoal: v.number(),
   createdAt: v.string(),
   updatedAt: v.string(),

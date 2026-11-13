@@ -69,7 +69,7 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
           />
         </div>
 
-        <div className="segmented" style={{ width: 220 }}>
+        <div className="segmented pool-filter-segmented">
           <button
             type="button"
             className={poolFilter === 'all' ? 'active' : ''}

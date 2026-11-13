@@ -123,7 +123,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="page-actions">
           <button type="button" className="btn" onClick={onResetDraft}>
             <FilePlus2 size={15} />
             Limpar / Novo
@@ -151,7 +151,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
             </div>
             <div className="card-section">
               <div className="form-grid">
-                <div className="field" style={{ gridColumn: 'span 6' }}>
+                <div className="field col-6">
                   <label>Título do Treino</label>
                   <input
                     type="text"
@@ -162,7 +162,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                   />
                 </div>
 
-                <div className="field" style={{ gridColumn: 'span 3' }}>
+                <div className="field col-3">
                   <label>Data da Sessão</label>
                   <input
                     type="date"
@@ -172,7 +172,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                   />
                 </div>
 
-                <div className="field" style={{ gridColumn: 'span 3' }}>
+                <div className="field col-3">
                   <label>Piscina</label>
                   <div className="segmented">
                     <button
@@ -192,7 +192,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                   </div>
                 </div>
 
-                <div className="field" style={{ gridColumn: 'span 6' }}>
+                <div className="field col-6">
                   <label>Objetivo Fisiológico</label>
                   <select
                     className="select"
@@ -207,7 +207,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                   </select>
                 </div>
 
-                <div className="field" style={{ gridColumn: 'span 6' }}>
+                <div className="field col-6">
                   <label>Técnico Responsável</label>
                   <input
                     type="text"
@@ -218,7 +218,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                   />
                 </div>
 
-                <div className="field" style={{ gridColumn: 'span 12' }}>
+                <div className="field col-12">
                   <label>Observações Gerais do Treino</label>
                   <textarea
                     className="textarea"
@@ -250,7 +250,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div className="block-header-actions">
                       <span className="block-meters">{formatMeters(stats.byBlock[block.key])}</span>
                       <button
                         type="button"
@@ -274,15 +274,17 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
 
                         return (
                           <div key={item.id} className="series-row">
-                            <div>
+                            <div className="series-cell-reps">
                               <div className="series-reps-dist">
                                 {item.reps} × {item.distance}m
                               </div>
                             </div>
 
-                            <div className="series-subtotal">{formatMeters(subtotal)}</div>
+                            <div className="series-subtotal series-cell-subtotal">
+                              {formatMeters(subtotal)}
+                            </div>
 
-                            <div>
+                            <div className="series-cell-type">
                               <div className="series-type-main">{item.seriesType}</div>
                               {item.equipment.length > 0 && (
                                 <div className="series-equip-list">
@@ -295,14 +297,14 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                               )}
                             </div>
 
-                            <div>
+                            <div className="series-cell-interval">
                               <span className="interval-pill">
                                 <Clock size={12} />
                                 {item.interval}
                               </span>
                             </div>
 
-                            <div>
+                            <div className="series-cell-zone">
                               {zone && (
                                 <span
                                   className="zone-badge"
@@ -317,7 +319,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                               )}
                             </div>
 
-                            <div className="series-notes">
+                            <div className="series-notes series-cell-notes">
                               {item.notes || (
                                 <span style={{ color: 'var(--ink-muted)' }}>—</span>
                               )}

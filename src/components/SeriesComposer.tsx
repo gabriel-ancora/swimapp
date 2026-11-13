@@ -70,7 +70,7 @@ export const SeriesComposer: React.FC<SeriesComposerProps> = ({
 
       <div className="form-grid">
         {/* Repetições */}
-        <div className="field" style={{ gridColumn: 'span 2' }}>
+        <div className="field col-2">
           <label>Repetições</label>
           <input
             type="number"
@@ -84,9 +84,9 @@ export const SeriesComposer: React.FC<SeriesComposerProps> = ({
         </div>
 
         {/* Metragem */}
-        <div className="field" style={{ gridColumn: 'span 3' }}>
+        <div className="field col-3">
           <label>Metragem (m)</label>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="distance-input-group">
             <input
               type="number"
               min={10}
@@ -97,8 +97,7 @@ export const SeriesComposer: React.FC<SeriesComposerProps> = ({
               required
             />
             <select
-              className="select mono-num"
-              style={{ width: 92 }}
+              className="select mono-num distance-select"
               value={catalog.distances.includes(distance) ? distance : ''}
               onChange={(e) => {
                 if (e.target.value) setDistance(Number(e.target.value));
@@ -116,7 +115,7 @@ export const SeriesComposer: React.FC<SeriesComposerProps> = ({
         </div>
 
         {/* Tipo de Série */}
-        <div className="field" style={{ gridColumn: 'span 4' }}>
+        <div className="field col-4">
           <label>Estilo / Tipo de Série</label>
           <select
             className="select"
@@ -132,7 +131,7 @@ export const SeriesComposer: React.FC<SeriesComposerProps> = ({
         </div>
 
         {/* Intervalo */}
-        <div className="field" style={{ gridColumn: 'span 3' }}>
+        <div className="field col-3">
           <label>Intervalo / Saída</label>
           <input
             type="text"
@@ -150,7 +149,7 @@ export const SeriesComposer: React.FC<SeriesComposerProps> = ({
         </div>
 
         {/* Quick Distance Chips */}
-        <div className="field" style={{ gridColumn: 'span 12' }}>
+        <div className="field col-12">
           <label>Atalhos de Metragem (Base Própria)</label>
           <div className="chip-row">
             {quickDistances.map((d) => (
@@ -167,7 +166,7 @@ export const SeriesComposer: React.FC<SeriesComposerProps> = ({
         </div>
 
         {/* Zona de Intensidade */}
-        <div className="field" style={{ gridColumn: 'span 12' }}>
+        <div className="field col-12">
           <label>Intensidade / Zona Fisiológica</label>
           <div className="chip-row">
             {catalog.zones.map((z) => {
@@ -192,7 +191,7 @@ export const SeriesComposer: React.FC<SeriesComposerProps> = ({
         </div>
 
         {/* Equipamentos */}
-        <div className="field" style={{ gridColumn: 'span 12' }}>
+        <div className="field col-12">
           <label>Equipamentos (Opcional)</label>
           <div className="chip-row">
             {catalog.equipment.map((eq) => {
@@ -212,7 +211,7 @@ export const SeriesComposer: React.FC<SeriesComposerProps> = ({
         </div>
 
         {/* Observações */}
-        <div className="field" style={{ gridColumn: 'span 12' }}>
+        <div className="field col-12">
           <label>Observações Técnicas da Série</label>
           <input
             type="text"
@@ -224,16 +223,7 @@ export const SeriesComposer: React.FC<SeriesComposerProps> = ({
         </div>
       </div>
 
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'flex-end',
-          gap: 8,
-          marginTop: 14,
-          paddingTop: 12,
-          borderTop: '1px solid var(--border-hairline)',
-        }}
-      >
+      <div className="composer-actions">
         <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>
           <X size={14} /> Cancelar
         </button>

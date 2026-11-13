@@ -144,10 +144,7 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
             </span>
           </div>
           <div className="card-section">
-            <form
-              onSubmit={addSeriesType}
-              style={{ display: 'flex', gap: 8, marginBottom: 14 }}
-            >
+            <form onSubmit={addSeriesType} className="catalog-add-form">
               <input
                 type="text"
                 className="input"
@@ -156,8 +153,7 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
                 placeholder="Ex: Medley Invertido"
               />
               <select
-                className="select"
-                style={{ width: 150 }}
+                className="select catalog-select"
                 value={newSeriesCategory}
                 onChange={(e) => setNewSeriesCategory(e.target.value as SeriesCategory)}
               >
@@ -200,7 +196,7 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
             </span>
           </div>
           <div className="card-section">
-            <form onSubmit={addDistance} style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+            <form onSubmit={addDistance} className="catalog-add-form">
               <input
                 type="number"
                 min={10}
@@ -237,7 +233,7 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
             </span>
           </div>
           <div className="card-section">
-            <form onSubmit={addInterval} style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+            <form onSubmit={addInterval} className="catalog-add-form">
               <input
                 type="text"
                 className="input mono-num"
@@ -273,7 +269,7 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
               <div className="metric-label" style={{ marginBottom: 8 }}>
                 Equipamentos
               </div>
-              <form onSubmit={addEquipment} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              <form onSubmit={addEquipment} className="catalog-add-form">
                 <input
                   type="text"
                   className="input"
@@ -301,7 +297,7 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
               <div className="metric-label" style={{ marginBottom: 8 }}>
                 Objetivos de Treino
               </div>
-              <form onSubmit={addObjective} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              <form onSubmit={addObjective} className="catalog-add-form">
                 <input
                   type="text"
                   className="input"

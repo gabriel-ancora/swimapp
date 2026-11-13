@@ -2,6 +2,7 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow-x: clip;
 }
 
 /* Top Navigation */
@@ -291,6 +292,10 @@
   .builder-grid {
     grid-template-columns: 1fr;
   }
+
+  .telemetry-panel {
+    position: static;
+  }
 }
 
 /* Cards & Surfaces */
@@ -326,8 +331,76 @@
 /* Form Controls */
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(12, 1fr);
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 12px;
+}
+
+.col-12 {
+  grid-column: span 12;
+}
+.col-6 {
+  grid-column: span 6;
+}
+.col-4 {
+  grid-column: span 4;
+}
+.col-3 {
+  grid-column: span 3;
+}
+.col-2 {
+  grid-column: span 2;
+}
+
+.distance-input-group {
+  display: flex;
+  gap: 6px;
+}
+
+.distance-select {
+  width: 92px;
+  flex-shrink: 0;
+}
+
+.page-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.block-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-hairline);
+}
+
+.pool-filter-segmented {
+  width: 220px;
+}
+
+.catalog-add-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.catalog-add-form .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.catalog-select {
+  width: 150px;
+  flex-shrink: 0;
 }
 
 .field {
@@ -488,8 +561,26 @@
 
 @media (max-width: 900px) {
   .series-row {
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    grid-template-columns: 1fr auto;
+    gap: 8px 10px;
+    padding: 14px 16px;
+  }
+
+  .series-cell-subtotal {
+    text-align: right;
+  }
+
+  .series-cell-type,
+  .series-cell-notes {
+    grid-column: 1 / -1;
+  }
+
+  .series-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+    padding-top: 8px;
+    margin-top: 2px;
+    border-top: 1px dashed var(--border-hairline);
   }
 }
 
@@ -762,7 +853,7 @@
 
 .workouts-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
   gap: 16px;
 }
 
@@ -977,4 +1068,234 @@
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   font-size: 12px;
+}
+
+/* ==========================================================================
+   Responsive Breakpoints — Tablets & Mobile Phones
+   ========================================================================== */
+
+/* Tablets & Small Laptops (<= 1080px) */
+@media (max-width: 1080px) {
+  .telemetry-panel {
+    position: static;
+  }
+}
+
+/* Tablets (<= 900px) */
+@media (max-width: 900px) {
+  .topbar-inner {
+    height: auto;
+    padding: 10px 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .nav-tabs {
+    order: 3;
+    width: 100%;
+  }
+
+  .nav-tab {
+    flex: 1;
+    justify-content: center;
+    padding: 8px 10px;
+  }
+
+  .main-container {
+    padding: 20px 16px;
+  }
+
+  .col-2 {
+    grid-column: span 4;
+  }
+
+  .col-3 {
+    grid-column: span 6;
+  }
+
+  .col-4 {
+    grid-column: span 8;
+  }
+
+  .col-6 {
+    grid-column: span 6;
+  }
+}
+
+/* Mobile Phones (<= 640px) */
+@media (max-width: 640px) {
+  .topbar-inner {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .brand-sub {
+    display: none;
+  }
+
+  .pool-pill {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+
+  .nav-tab {
+    padding: 7px 6px;
+    font-size: 12px;
+    gap: 5px;
+  }
+
+  .nav-tab svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+  }
+
+  .nav-badge {
+    font-size: 10px;
+    padding: 1px 5px;
+  }
+
+  .main-container {
+    padding: 14px 12px;
+  }
+
+  .page-header {
+    margin-bottom: 16px;
+    gap: 12px;
+  }
+
+  .page-title {
+    font-size: 19px;
+  }
+
+  .page-actions {
+    width: 100%;
+  }
+
+  .page-actions .btn {
+    flex: 1;
+    min-height: 38px;
+  }
+
+  .card-header {
+    padding: 12px 14px;
+  }
+
+  .card-section {
+    padding: 14px;
+  }
+
+  /* Prevent iOS Safari zoom on input focus */
+  .input,
+  .select,
+  .textarea {
+    font-size: 16px;
+    padding: 9px 11px;
+  }
+
+  /* Stack form grid on mobile; keep reps & distance side-by-side in composer */
+  .form-grid {
+    gap: 10px;
+  }
+
+  .col-2,
+  .col-3,
+  .col-4,
+  .col-6,
+  .col-12 {
+    grid-column: span 12;
+  }
+
+  .composer-box {
+    padding: 14px;
+  }
+
+  .composer-title {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .distance-select {
+    width: 104px;
+  }
+
+  .chip-btn {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  .composer-actions {
+    flex-direction: column-reverse;
+  }
+
+  .composer-actions .btn {
+    width: 100%;
+    min-height: 40px;
+  }
+
+  .block-header {
+    padding: 12px 14px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .block-header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .empty-block {
+    padding: 16px 14px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .empty-block .btn {
+    width: 100%;
+    min-height: 38px;
+  }
+
+  .btn-icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .metric-big {
+    font-size: 26px;
+  }
+
+  .search-wrap {
+    min-width: 100%;
+  }
+
+  .pool-filter-segmented {
+    width: 100%;
+  }
+
+  .workout-card {
+    padding: 14px;
+  }
+
+  .workout-card-actions {
+    flex-wrap: wrap;
+  }
+
+  .catalog-add-form {
+    flex-wrap: wrap;
+  }
+
+  .catalog-select {
+    width: 100%;
+  }
+
+  .catalog-add-form .btn {
+    min-height: 38px;
+  }
+
+  .toast {
+    left: 12px;
+    right: 12px;
+    bottom: 14px;
+    justify-content: center;
+  }
 }

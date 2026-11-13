@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from 'convex/react';
 import { makeFunctionReference } from 'convex/server';
 import {
@@ -15,7 +15,7 @@ import { CatalogManager } from './components/CatalogManager';
 import { MyWorkouts } from './components/MyWorkouts';
 import { PrintSheet } from './components/PrintSheet';
 import { WorkoutBuilder } from './components/WorkoutBuilder';
-import { DEFAULT_CATALOG, SAMPLE_WORKOUTS } from './data/defaultDatabase';
+import { DEFAULT_CATALOG } from './data/defaultDatabase';
 import type { ActiveTab, CatalogDatabase, Workout } from './types/swimming';
 import {
   generateId,
@@ -34,9 +34,6 @@ const workoutUpsertMutation = makeFunctionReference<'mutation', { workout: Worko
 );
 const workoutRemoveMutation = makeFunctionReference<'mutation', { id: string }, void>(
   'workouts:remove'
-);
-const workoutsSeedMutation = makeFunctionReference<'mutation', { workouts: Workout[] }, void>(
-  'workouts:seedIfEmpty'
 );
 
 type StoredCatalog = Omit<CatalogDatabase, 'zones'>;
@@ -295,17 +292,7 @@ function ConvexApp() {
   const cloudCatalog = useQuery(catalogGetQuery, {});
   const upsertWorkout = useMutation(workoutUpsertMutation);
   const removeWorkout = useMutation(workoutRemoveMutation);
-  const seedWorkouts = useMutation(workoutsSeedMutation);
   const saveCloudCatalog = useMutation(catalogSaveMutation);
-
-  const hasSeededRef = useRef(false);
-
-  useEffect(() => {
-    if (cloudWorkouts && cloudWorkouts.length === 0 && !hasSeededRef.current) {
-      hasSeededRef.current = true;
-      void seedWorkouts({ workouts: SAMPLE_WORKOUTS });
-    }
-  }, [cloudWorkouts, seedWorkouts]);
 
   const catalog = useMemo<CatalogDatabase>(() => {
     if (!cloudCatalog) return DEFAULT_CATALOG;

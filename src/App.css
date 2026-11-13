@@ -150,6 +150,29 @@
   color: var(--ink-secondary);
 }
 
+.sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--border-hairline);
+}
+
+.sync-pill.cloud {
+  background: var(--success-soft);
+  color: var(--success);
+  border-color: #a7f3d0;
+}
+
+.sync-pill.local {
+  background: var(--bg-subtle);
+  color: var(--ink-muted);
+}
+
 /* Main Workspace */
 .main-container {
   max-width: 1400px;

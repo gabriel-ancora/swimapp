@@ -1,22 +1,49 @@
-import { useEffect, useState } from 'react';
-import { CheckCircle2, ClipboardList, Database, PlusSquare, Waves } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery } from 'convex/react';
+import { makeFunctionReference } from 'convex/server';
+import {
+  CheckCircle2,
+  ClipboardList,
+  Cloud,
+  CloudOff,
+  Database,
+  PlusSquare,
+  Waves,
+} from 'lucide-react';
 import './App.css';
 import { CatalogManager } from './components/CatalogManager';
 import { MyWorkouts } from './components/MyWorkouts';
 import { PrintSheet } from './components/PrintSheet';
 import { WorkoutBuilder } from './components/WorkoutBuilder';
+import { DEFAULT_CATALOG, SAMPLE_WORKOUTS } from './data/defaultDatabase';
 import type { ActiveTab, CatalogDatabase, Workout } from './types/swimming';
 import {
-  createBackupPayload,
   generateId,
   loadCatalog,
   loadWorkouts,
-  mergeWorkouts,
-  parseBackupFile,
   resetCatalog,
   saveCatalog,
   saveWorkouts,
 } from './utils/storage';
+
+const workoutsListQuery = makeFunctionReference<'query', Record<string, never>, Workout[]>(
+  'workouts:list'
+);
+const workoutUpsertMutation = makeFunctionReference<'mutation', { workout: Workout }, void>(
+  'workouts:upsert'
+);
+const workoutRemoveMutation = makeFunctionReference<'mutation', { id: string }, void>(
+  'workouts:remove'
+);
+const workoutsSeedMutation = makeFunctionReference<'mutation', { workouts: Workout[] }, void>(
+  'workouts:seedIfEmpty'
+);
+
+type StoredCatalog = Omit<CatalogDatabase, 'zones'>;
+const catalogGetQuery = makeFunctionReference<'query', Record<string, never>, StoredCatalog | null>(
+  'catalog:get'
+);
+const catalogSaveMutation = makeFunctionReference<'mutation', StoredCatalog, void>('catalog:save');
 
 function createEmptyWorkout(catalog: CatalogDatabase): Workout {
   const today = new Date().toISOString().slice(0, 10);
@@ -35,11 +62,29 @@ function createEmptyWorkout(catalog: CatalogDatabase): Workout {
   };
 }
 
-export function App() {
-  const [catalog, setCatalog] = useState<CatalogDatabase>(() => loadCatalog());
-  const [workouts, setWorkouts] = useState<Workout[]>(() => loadWorkouts());
+interface AppShellProps {
+  catalog: CatalogDatabase;
+  workouts: Workout[];
+  syncMode: 'cloud' | 'local';
+  isLoadingCloud?: boolean;
+  onUpdateCatalog: (next: CatalogDatabase) => void | Promise<void>;
+  onResetCatalog: () => void | Promise<void>;
+  onPersistWorkout: (workout: Workout, isEditing: boolean) => void | Promise<void>;
+  onDeleteWorkout: (id: string) => void | Promise<void>;
+}
+
+function AppShell({
+  catalog,
+  workouts,
+  syncMode,
+  isLoadingCloud = false,
+  onUpdateCatalog,
+  onResetCatalog,
+  onPersistWorkout,
+  onDeleteWorkout,
+}: AppShellProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('novo');
-  const [draft, setDraft] = useState<Workout>(() => createEmptyWorkout(loadCatalog()));
+  const [draft, setDraft] = useState<Workout>(() => createEmptyWorkout(catalog));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [printTarget, setPrintTarget] = useState<Workout | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -52,44 +97,36 @@ export function App() {
 
   const showToast = (msg: string) => setToast(msg);
 
-  const handleUpdateCatalog = (next: CatalogDatabase) => {
-    setCatalog(next);
-    saveCatalog(next);
+  const handleUpdateCatalog = async (next: CatalogDatabase) => {
+    await onUpdateCatalog(next);
     showToast('Base técnica atualizada.');
   };
 
-  const handleResetCatalog = () => {
-    const restored = resetCatalog();
-    setCatalog(restored);
+  const handleResetCatalog = async () => {
+    await onResetCatalog();
     showToast('Base técnica restaurada para o padrão.');
   };
 
-  const handleSaveWorkout = () => {
+  const handleSaveWorkout = async () => {
     if (draft.items.length === 0) {
       showToast('Adicione pelo menos uma série antes de salvar.');
       return;
     }
 
     const now = new Date().toISOString();
+    const isEditing = Boolean(editingId);
     const finalWorkout: Workout = {
       ...draft,
       title: draft.title.trim() || `Treino ${draft.objective}`,
       updatedAt: now,
     };
 
-    let updatedList: Workout[];
-    if (editingId) {
-      updatedList = workouts.map((w) => (w.id === editingId ? finalWorkout : w));
-      showToast('Treino atualizado em Meus Treinos.');
-    } else {
-      updatedList = [finalWorkout, ...workouts];
+    await onPersistWorkout(finalWorkout, isEditing);
+    if (!isEditing) {
       setEditingId(finalWorkout.id);
-      showToast('Treino salvo em Meus Treinos.');
     }
-
     setDraft(finalWorkout);
-    setWorkouts(updatedList);
-    saveWorkouts(updatedList);
+    showToast(isEditing ? 'Treino atualizado em Meus Treinos.' : 'Treino salvo em Meus Treinos.');
   };
 
   const handlePrint = (workoutToPrint: Workout) => {
@@ -115,7 +152,7 @@ export function App() {
     setActiveTab('novo');
   };
 
-  const handleDuplicateWorkout = (workout: Workout) => {
+  const handleDuplicateWorkout = async (workout: Workout) => {
     const now = new Date().toISOString();
     const copy: Workout = {
       ...workout,
@@ -129,61 +166,16 @@ export function App() {
         equipment: [...item.equipment],
       })),
     };
-    const next = [copy, ...workouts];
-    setWorkouts(next);
-    saveWorkouts(next);
+    await onPersistWorkout(copy, false);
     showToast('Treino duplicado com sucesso.');
   };
 
-  const handleDeleteWorkout = (id: string) => {
-    const next = workouts.filter((w) => w.id !== id);
-    setWorkouts(next);
-    saveWorkouts(next);
+  const handleDeleteWorkout = async (id: string) => {
+    await onDeleteWorkout(id);
     if (editingId === id) {
       handleResetDraft();
     }
     showToast('Treino excluído.');
-  };
-
-  const handleExportBackup = () => {
-    const payload = createBackupPayload(workouts, catalog);
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: 'application/json',
-    });
-    const url = URL.createObjectURL(blob);
-    const dateSlug = new Date().toISOString().slice(0, 10);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `raia-pro-backup-${dateSlug}.json`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-    showToast('Backup .json exportado com sucesso.');
-  };
-
-  const handleImportBackup = async (file: File) => {
-    try {
-      const text = await file.text();
-      const { workouts: importedWorkouts, catalog: importedCatalog } = parseBackupFile(text);
-      const { merged, addedCount, updatedCount } = mergeWorkouts(workouts, importedWorkouts);
-
-      setWorkouts(merged);
-      saveWorkouts(merged);
-
-      if (importedCatalog) {
-        setCatalog(importedCatalog);
-        saveCatalog(importedCatalog);
-      }
-
-      showToast(
-        `Backup importado: ${addedCount} novo(s), ${updatedCount} atualizado(s).`
-      );
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Não foi possível importar o arquivo.';
-      showToast(message);
-    }
   };
 
   return (
@@ -217,7 +209,7 @@ export function App() {
               >
                 <ClipboardList size={15} />
                 Meus Treinos
-                <span className="nav-badge">{workouts.length}</span>
+                <span className="nav-badge">{isLoadingCloud ? '…' : workouts.length}</span>
               </button>
               <button
                 type="button"
@@ -230,6 +222,17 @@ export function App() {
             </nav>
 
             <div className="topbar-meta">
+              <span
+                className={`sync-pill ${syncMode}`}
+                title={
+                  syncMode === 'cloud'
+                    ? 'Sincronizado em tempo real via Convex'
+                    : 'Armazenamento local (configure VITE_CONVEX_URL para sincronizar)'
+                }
+              >
+                {syncMode === 'cloud' ? <Cloud size={12} /> : <CloudOff size={12} />}
+                {syncMode === 'cloud' ? 'Nuvem' : 'Local'}
+              </span>
               <span className="pool-pill">
                 PISCINA {activeTab === 'novo' ? `${draft.poolLength}M` : '25M / 50M'}
               </span>
@@ -258,8 +261,6 @@ export function App() {
               onPrint={handlePrint}
               onDuplicate={handleDuplicateWorkout}
               onDelete={handleDeleteWorkout}
-              onExportBackup={handleExportBackup}
-              onImportBackup={handleImportBackup}
               onCreateNew={() => {
                 handleResetDraft();
                 setActiveTab('novo');
@@ -287,6 +288,133 @@ export function App() {
       )}
     </>
   );
+}
+
+function ConvexApp() {
+  const cloudWorkouts = useQuery(workoutsListQuery, {});
+  const cloudCatalog = useQuery(catalogGetQuery, {});
+  const upsertWorkout = useMutation(workoutUpsertMutation);
+  const removeWorkout = useMutation(workoutRemoveMutation);
+  const seedWorkouts = useMutation(workoutsSeedMutation);
+  const saveCloudCatalog = useMutation(catalogSaveMutation);
+
+  const hasSeededRef = useRef(false);
+
+  useEffect(() => {
+    if (cloudWorkouts && cloudWorkouts.length === 0 && !hasSeededRef.current) {
+      hasSeededRef.current = true;
+      void seedWorkouts({ workouts: SAMPLE_WORKOUTS });
+    }
+  }, [cloudWorkouts, seedWorkouts]);
+
+  const catalog = useMemo<CatalogDatabase>(() => {
+    if (!cloudCatalog) return DEFAULT_CATALOG;
+    return {
+      seriesTypes: cloudCatalog.seriesTypes.length
+        ? cloudCatalog.seriesTypes
+        : DEFAULT_CATALOG.seriesTypes,
+      distances: cloudCatalog.distances.length
+        ? cloudCatalog.distances
+        : DEFAULT_CATALOG.distances,
+      intervals: cloudCatalog.intervals.length
+        ? cloudCatalog.intervals
+        : DEFAULT_CATALOG.intervals,
+      equipment: cloudCatalog.equipment.length
+        ? cloudCatalog.equipment
+        : DEFAULT_CATALOG.equipment,
+      objectives: cloudCatalog.objectives.length
+        ? cloudCatalog.objectives
+        : DEFAULT_CATALOG.objectives,
+      zones: DEFAULT_CATALOG.zones,
+    };
+  }, [cloudCatalog]);
+
+  const handleUpdateCatalog = async (next: CatalogDatabase) => {
+    await saveCloudCatalog({
+      seriesTypes: next.seriesTypes,
+      distances: next.distances,
+      intervals: next.intervals,
+      equipment: next.equipment,
+      objectives: next.objectives,
+    });
+  };
+
+  const handleResetCatalog = async () => {
+    await saveCloudCatalog({
+      seriesTypes: DEFAULT_CATALOG.seriesTypes,
+      distances: DEFAULT_CATALOG.distances,
+      intervals: DEFAULT_CATALOG.intervals,
+      equipment: DEFAULT_CATALOG.equipment,
+      objectives: DEFAULT_CATALOG.objectives,
+    });
+  };
+
+  const handlePersistWorkout = async (workout: Workout) => {
+    await upsertWorkout({ workout });
+  };
+
+  const handleDeleteWorkout = async (id: string) => {
+    await removeWorkout({ id });
+  };
+
+  return (
+    <AppShell
+      catalog={catalog}
+      workouts={cloudWorkouts ?? []}
+      syncMode="cloud"
+      isLoadingCloud={cloudWorkouts === undefined}
+      onUpdateCatalog={handleUpdateCatalog}
+      onResetCatalog={handleResetCatalog}
+      onPersistWorkout={handlePersistWorkout}
+      onDeleteWorkout={handleDeleteWorkout}
+    />
+  );
+}
+
+function LocalApp() {
+  const [catalog, setCatalog] = useState<CatalogDatabase>(() => loadCatalog());
+  const [workouts, setWorkouts] = useState<Workout[]>(() => loadWorkouts());
+
+  const handleUpdateCatalog = (next: CatalogDatabase) => {
+    setCatalog(next);
+    saveCatalog(next);
+  };
+
+  const handleResetCatalog = () => {
+    const restored = resetCatalog();
+    setCatalog(restored);
+  };
+
+  const handlePersistWorkout = (workout: Workout, isEditing: boolean) => {
+    const updatedList = isEditing
+      ? workouts.map((w) => (w.id === workout.id ? workout : w))
+      : [workout, ...workouts];
+    setWorkouts(updatedList);
+    saveWorkouts(updatedList);
+  };
+
+  const handleDeleteWorkout = (id: string) => {
+    const next = workouts.filter((w) => w.id !== id);
+    setWorkouts(next);
+    saveWorkouts(next);
+  };
+
+  return (
+    <AppShell
+      catalog={catalog}
+      workouts={workouts}
+      syncMode="local"
+      onUpdateCatalog={handleUpdateCatalog}
+      onResetCatalog={handleResetCatalog}
+      onPersistWorkout={handlePersistWorkout}
+      onDeleteWorkout={handleDeleteWorkout}
+    />
+  );
+}
+
+export function App() {
+  const hasConvex = Boolean(import.meta.env.VITE_CONVEX_URL);
+  return hasConvex ? <ConvexApp /> : <LocalApp />;
 }
 
 export default App;

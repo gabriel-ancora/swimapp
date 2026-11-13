@@ -1,16 +1,5 @@
-import React, { useMemo, useRef, useState } from 'react';
-import {
-  Calendar,
-  Copy,
-  Download,
-  Edit3,
-  Plus,
-  Printer,
-  Search,
-  Trash2,
-  Upload,
-  Waves,
-} from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Calendar, Copy, Edit3, Plus, Printer, Search, Trash2, Waves } from 'lucide-react';
 import type { CatalogDatabase, Workout } from '../types/swimming';
 import { computeWorkoutStats, formatDateBR, formatMeters } from '../utils/storage';
 
@@ -21,8 +10,6 @@ interface MyWorkoutsProps {
   onPrint: (workout: Workout) => void;
   onDuplicate: (workout: Workout) => void;
   onDelete: (id: string) => void;
-  onExportBackup: () => void;
-  onImportBackup: (file: File) => void;
   onCreateNew: () => void;
 }
 
@@ -33,14 +20,11 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
   onPrint,
   onDuplicate,
   onDelete,
-  onExportBackup,
-  onImportBackup,
   onCreateNew,
 }) => {
   const [search, setSearch] = useState('');
   const [poolFilter, setPoolFilter] = useState<'all' | 25 | 50>('all');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredWorkouts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -67,43 +51,10 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
           </p>
         </div>
 
-        <div className="page-actions">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json,application/json"
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) {
-                onImportBackup(file);
-                e.target.value = '';
-              }
-            }}
-          />
-          <button
-            type="button"
-            className="btn"
-            onClick={() => fileInputRef.current?.click()}
-            title="Importar backup (.json)"
-          >
-            <Upload size={15} />
-            Importar
-          </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={onExportBackup}
-            title="Exportar treinos e base técnica (.json)"
-          >
-            <Download size={15} />
-            Exportar
-          </button>
-          <button type="button" className="btn btn-primary" onClick={onCreateNew}>
-            <Plus size={15} />
-            Novo Treino
-          </button>
-        </div>
+        <button type="button" className="btn btn-primary" onClick={onCreateNew}>
+          <Plus size={15} />
+          Novo Treino
+        </button>
       </div>
 
       <div className="filters-bar">

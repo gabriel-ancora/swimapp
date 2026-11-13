@@ -7,9 +7,12 @@ import { PrintSheet } from './components/PrintSheet';
 import { WorkoutBuilder } from './components/WorkoutBuilder';
 import type { ActiveTab, CatalogDatabase, Workout } from './types/swimming';
 import {
+  createBackupPayload,
   generateId,
   loadCatalog,
   loadWorkouts,
+  mergeWorkouts,
+  parseBackupFile,
   resetCatalog,
   saveCatalog,
   saveWorkouts,
@@ -142,6 +145,47 @@ export function App() {
     showToast('Treino excluído.');
   };
 
+  const handleExportBackup = () => {
+    const payload = createBackupPayload(workouts, catalog);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const dateSlug = new Date().toISOString().slice(0, 10);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `raia-pro-backup-${dateSlug}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showToast('Backup .json exportado com sucesso.');
+  };
+
+  const handleImportBackup = async (file: File) => {
+    try {
+      const text = await file.text();
+      const { workouts: importedWorkouts, catalog: importedCatalog } = parseBackupFile(text);
+      const { merged, addedCount, updatedCount } = mergeWorkouts(workouts, importedWorkouts);
+
+      setWorkouts(merged);
+      saveWorkouts(merged);
+
+      if (importedCatalog) {
+        setCatalog(importedCatalog);
+        saveCatalog(importedCatalog);
+      }
+
+      showToast(
+        `Backup importado: ${addedCount} novo(s), ${updatedCount} atualizado(s).`
+      );
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Não foi possível importar o arquivo.';
+      showToast(message);
+    }
+  };
+
   return (
     <>
       <div className="app-shell no-print">
@@ -214,6 +258,8 @@ export function App() {
               onPrint={handlePrint}
               onDuplicate={handleDuplicateWorkout}
               onDelete={handleDeleteWorkout}
+              onExportBackup={handleExportBackup}
+              onImportBackup={handleImportBackup}
               onCreateNew={() => {
                 handleResetDraft();
                 setActiveTab('novo');

@@ -11,7 +11,6 @@ import {
   Save,
   Trash2,
 } from 'lucide-react';
-import type { BlockType, CatalogDatabase, Workout, WorkoutItem } from '../types/swimming';
 import type {
   Athlete,
   BlockType,

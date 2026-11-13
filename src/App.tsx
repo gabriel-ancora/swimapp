@@ -24,7 +24,6 @@ import { PrintSheet } from './components/PrintSheet';
 import { TeamManager } from './components/TeamManager';
 import { WorkoutBuilder } from './components/WorkoutBuilder';
 import { DEFAULT_CATALOG } from './data/defaultDatabase';
-import type { ActiveTab, CatalogDatabase, Workout } from './types/swimming';
 import type {
   ActiveTab,
   Athlete,
@@ -52,9 +51,6 @@ import {
   saveWorkouts,
 } from './utils/storage';
 
-const workoutsListQuery = makeFunctionReference<'query', Record<string, never>, Workout[]>(
-  'workouts:list'
-);
 const workoutsListQuery = makeFunctionReference<
   'query',
   { coachId?: string },
@@ -73,7 +69,6 @@ const catalogGetQuery = makeFunctionReference<'query', Record<string, never>, St
 );
 const catalogSaveMutation = makeFunctionReference<'mutation', StoredCatalog, void>('catalog:save');
 
-function createEmptyWorkout(catalog: CatalogDatabase): Workout {
 const authRegisterMutation = makeFunctionReference<
   'mutation',
   {
@@ -125,7 +120,6 @@ function createEmptyWorkout(
     date: today,
     poolLength: 25,
     objective: catalog.objectives[0] ?? 'Base Aeróbica (A1/A2)',
-    coach: '',
     coach: coach.name,
     generalNotes: '',
     items: [],
@@ -174,7 +168,6 @@ function AppShell({
   onLogout,
 }: AppShellProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('novo');
-  const [draft, setDraft] = useState<Workout>(() => createEmptyWorkout(catalog));
   const [draft, setDraft] = useState<Workout>(() =>
     createEmptyWorkout(catalog, coach, activeTeam)
   );
@@ -236,7 +229,6 @@ function AppShell({
 
   const handleResetDraft = () => {
     setEditingId(null);
-    setDraft(createEmptyWorkout(catalog));
     setDraft(createEmptyWorkout(catalog, coach, activeTeam));
   };
 
@@ -283,7 +275,6 @@ function AppShell({
         <header className="topbar">
           <div className="topbar-inner">
             <div className="brand">
-              <div className="brand-mark">
               <div
                 className="brand-mark"
                 style={activeTeam ? { background: activeTeam.accentColor } : undefined}
@@ -291,8 +282,6 @@ function AppShell({
                 <Waves size={18} />
               </div>
               <div className="brand-text">
-                <span className="brand-name">RAIA // PRO</span>
-                <span className="brand-sub">Performance Aquática</span>
                 <span className="brand-name">{activeTeam ? activeTeam.name : 'RAIA // PRO'}</span>
                 <span className="brand-sub">{coach.name}</span>
               </div>
@@ -313,7 +302,6 @@ function AppShell({
                 onClick={() => setActiveTab('treinos')}
               >
                 <ClipboardList size={15} />
-                Meus Treinos
                 Treinos
                 <span className="nav-badge">{isLoadingCloud ? '…' : workouts.length}</span>
               </button>
@@ -348,7 +336,6 @@ function AppShell({
                 onClick={() => setActiveTab('base')}
               >
                 <Database size={15} />
-                Base Técnica
                 Base
               </button>
             </nav>
@@ -362,7 +349,6 @@ function AppShell({
                     : 'Armazenamento local (configure VITE_CONVEX_URL para sincronizar)'
                 }
               >
-              <span className={`sync-pill ${syncMode}`}>
                 {syncMode === 'cloud' ? <Cloud size={12} /> : <CloudOff size={12} />}
                 {syncMode === 'cloud' ? 'Nuvem' : 'Local'}
               </span>
@@ -480,8 +466,6 @@ function AppShell({
   );
 }
 
-function ConvexApp() {
-  const cloudWorkouts = useQuery(workoutsListQuery, {});
 function ConvexApp({
   coach,
   onLogout,
@@ -553,14 +537,6 @@ function ConvexApp({
     });
   };
 
-  const handlePersistWorkout = async (workout: Workout) => {
-    await upsertWorkout({ workout });
-  };
-
-  const handleDeleteWorkout = async (id: string) => {
-    await removeWorkout({ id });
-  };
-
   return (
     <AppShell
       coach={coach}
@@ -584,8 +560,6 @@ function ConvexApp({
       }}
       onUpdateCatalog={handleUpdateCatalog}
       onResetCatalog={handleResetCatalog}
-      onPersistWorkout={handlePersistWorkout}
-      onDeleteWorkout={handleDeleteWorkout}
       onPersistWorkout={async (workout) => {
         await upsertWorkout({ workout });
       }}
@@ -597,7 +571,6 @@ function ConvexApp({
   );
 }
 
-function LocalApp() {
 function ConvexAuthGate({
   onAuthenticated,
 }: {
@@ -646,51 +619,24 @@ function LocalApp({
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const [athletes, setAthletes] = useState<Athlete[]>(() => loadLocalAthletes());
 
-  const handleUpdateCatalog = (next: CatalogDatabase) => {
-    setCatalog(next);
-    saveCatalog(next);
-  };
   const activeTeam = useMemo(() => {
     return teams.find((t) => t.id === selectedTeamId) ?? teams[0] ?? null;
   }, [teams, selectedTeamId]);
 
-  const handleResetCatalog = () => {
-    const restored = resetCatalog();
-    setCatalog(restored);
-  };
   const activeAthletes = useMemo(() => {
     if (!activeTeam) return [];
     return athletes.filter((a) => a.teamId === activeTeam.id);
   }, [athletes, activeTeam]);
 
-  const handlePersistWorkout = (workout: Workout, isEditing: boolean) => {
-    const updatedList = isEditing
-      ? workouts.map((w) => (w.id === workout.id ? workout : w))
-      : [workout, ...workouts];
-    setWorkouts(updatedList);
-    saveWorkouts(updatedList);
-  };
-
-  const handleDeleteWorkout = (id: string) => {
-    const next = workouts.filter((w) => w.id !== id);
-    setWorkouts(next);
-    saveWorkouts(next);
-  };
-
   return (
     <AppShell
       coach={coach}
       catalog={catalog}
-      workouts={workouts}
       workouts={workouts.filter((w) => !w.coachId || w.coachId === coach.id)}
       teams={teams}
       activeTeam={activeTeam}
       athletes={activeAthletes}
       syncMode="local"
-      onUpdateCatalog={handleUpdateCatalog}
-      onResetCatalog={handleResetCatalog}
-      onPersistWorkout={handlePersistWorkout}
-      onDeleteWorkout={handleDeleteWorkout}
       onSelectTeam={setSelectedTeamId}
       onSaveTeam={(team) => {
         const all = loadLocalTeams();
@@ -740,7 +686,6 @@ function LocalApp({
 
 export function App() {
   const hasConvex = Boolean(import.meta.env.VITE_CONVEX_URL);
-  return hasConvex ? <ConvexApp /> : <LocalApp />;
   const [session, setSession] = useState<CoachProfile | null>(() => loadSession());
 
   const handleLogout = () => {

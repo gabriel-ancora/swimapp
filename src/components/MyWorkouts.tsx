@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import { Calendar, Copy, Edit3, Plus, Printer, Search, Trash2, Waves } from 'lucide-react';
-import type { CatalogDatabase, Workout } from '../types/swimming';
 import type { Athlete, CatalogDatabase, Workout } from '../types/swimming';
 import { computeWorkoutStats, formatDateBR, formatMeters } from '../utils/storage';
 

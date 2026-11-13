@@ -69,25 +69,11 @@ function mapWorkoutDoc(doc: {
 }
 
 export const list = query({
-  args: {},
-  handler: async (ctx) => {
   args: {
     coachId: v.optional(v.string()),
   },
   handler: async (ctx, { coachId }) => {
     const docs = await ctx.db.query('workouts').withIndex('by_updatedAt').order('desc').collect();
-    return docs.map((doc) => ({
-      id: doc.clientId,
-      title: doc.title,
-      date: doc.date,
-      poolLength: doc.poolLength,
-      objective: doc.objective,
-      coach: doc.coach,
-      generalNotes: doc.generalNotes,
-      items: doc.items,
-      createdAt: doc.createdAt,
-      updatedAt: doc.updatedAt,
-    }));
     const filtered = coachId
       ? docs.filter((d) => !d.coachId || d.coachId === coachId)
       : docs;

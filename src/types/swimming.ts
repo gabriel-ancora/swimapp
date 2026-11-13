@@ -102,5 +102,4 @@ export interface Workout {
   updatedAt: string;
 }
 
-export type ActiveTab = 'novo' | 'treinos' | 'painel' | 'base';
 export type ActiveTab = 'novo' | 'treinos' | 'painel' | 'atletas' | 'equipe' | 'base';

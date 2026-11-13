@@ -62,7 +62,7 @@
 }
 
 .brand-name {
-  font-weight: 800;
+  font-weight: 700;
   font-size: 14px;
   letter-spacing: 0.04em;
   color: var(--ink-primary);
@@ -210,8 +210,8 @@
 .page-title {
   margin: 0;
   font-size: 22px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-weight: 700;
+  letter-spacing: -0.015em;
   color: var(--ink-primary);
 }
 
@@ -1026,7 +1026,7 @@
 .print-title {
   margin: 4px 0 2px 0;
   font-size: 22px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .print-meta-row {
@@ -1044,7 +1044,7 @@
   display: block;
   font-family: var(--font-mono);
   font-size: 26px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .print-block {
@@ -1053,7 +1053,7 @@
 
 .print-block-title {
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   background: #f1f5f9;

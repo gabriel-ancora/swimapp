@@ -1,12 +1,18 @@
 import { DEFAULT_CATALOG, SAMPLE_WORKOUTS } from '../data/defaultDatabase';
+import { getZoneTargetPace100Seconds } from '../domain/pace';
 import type {
   Athlete,
   BlockType,
   CatalogDatabase,
   CoachProfile,
+  CssTest,
   IntensityZone,
+  QualifyingStandard,
+  RpeLog,
+  SwimResult,
   Team,
   TrainingPlan,
+  WellnessEntry,
   Workout,
   WorkoutItem,
   ZoneId,
@@ -19,6 +25,11 @@ const COACHES_KEY = 'raia_pro_coaches_v1';
 const TEAMS_KEY = 'raia_pro_teams_v1';
 const ATHLETES_KEY = 'raia_pro_athletes_v1';
 const PLANS_KEY = 'raia_pro_plans_v1';
+const RESULTS_KEY = 'raia_pro_results_v1';
+const STANDARDS_KEY = 'raia_pro_standards_v1';
+const CSS_TESTS_KEY = 'raia_pro_css_tests_v1';
+const RPE_LOGS_KEY = 'raia_pro_rpe_logs_v1';
+const WELLNESS_KEY = 'raia_pro_wellness_v1';
 
 export function loadCatalog(): CatalogDatabase {
   try {
@@ -76,9 +87,11 @@ export function getItemMeters(item: WorkoutItem): number {
 }
 
 /**
- * Estimates duration in minutes from interval strings like "@ 1:30", "15\" desc.", or distance pace.
+ * Estimates duration in seconds from interval strings like "@ 1:30", "15\" desc.", or distance pace.
+ * When `cssPace100Cs` is provided, uses the athlete's zone-specific CSS pace per 100m instead of
+ * the default 92s/100m fallback.
  */
-export function estimateItemSeconds(item: WorkoutItem): number {
+export function estimateItemSeconds(item: WorkoutItem, cssPace100Cs?: number): number {
   const meters = getItemMeters(item);
   if (meters === 0) return 0;
 
@@ -89,8 +102,11 @@ export function estimateItemSeconds(item: WorkoutItem): number {
     return item.reps * perRepSec;
   }
 
-  // Average pace fallback ~90s per 100m + rest if "desc." is specified
-  const swimSeconds = (meters / 100) * 92;
+  const pacePer100Seconds =
+    cssPace100Cs && cssPace100Cs > 0
+      ? getZoneTargetPace100Seconds(cssPace100Cs, item.zoneId)
+      : 92;
+  const swimSeconds = (meters / 100) * pacePer100Seconds;
   const restSecMatch = interval.match(/(\d+)\s*"\s*desc/i);
   const restMinMatch = interval.match(/(\d+):(\d{2})\s*desc/i);
   let restSeconds = 0;
@@ -111,7 +127,11 @@ export interface WorkoutStats {
   byZone: Array<{ zone: IntensityZone; meters: number; percent: number }>;
 }
 
-export function computeWorkoutStats(items: WorkoutItem[], zones: IntensityZone[]): WorkoutStats {
+export function computeWorkoutStats(
+  items: WorkoutItem[],
+  zones: IntensityZone[],
+  cssPace100Cs?: number
+): WorkoutStats {
   const byBlock: Record<BlockType, number> = {
     aquecimento: 0,
     principal: 0,
@@ -134,7 +154,7 @@ export function computeWorkoutStats(items: WorkoutItem[], zones: IntensityZone[]
     totalMeters += m;
     byBlock[item.block] += m;
     zoneMeters[item.zoneId] = (zoneMeters[item.zoneId] || 0) + m;
-    totalSeconds += estimateItemSeconds(item);
+    totalSeconds += estimateItemSeconds(item, cssPace100Cs);
   }
 
   const byZone = zones.map((zone) => {
@@ -162,17 +182,22 @@ export function formatDateBR(isoDate: string): string {
   return `${parts[2]}/${parts[1]}/${parts[0]}`;
 }
 
-export function loadSession(): CoachProfile | null {
+/** Logged-in coach. In cloud mode, `sessionToken` is what the server trusts. */
+export interface AuthSession extends CoachProfile {
+  sessionToken?: string;
+}
+
+export function loadSession(): AuthSession | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
-    return raw ? (JSON.parse(raw) as CoachProfile) : null;
+    return raw ? (JSON.parse(raw) as AuthSession) : null;
   } catch {
     return null;
   }
 }
 
-export function saveSession(coach: CoachProfile): void {
-  localStorage.setItem(SESSION_KEY, JSON.stringify(coach));
+export function saveSession(session: AuthSession): void {
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 }
 
 export function clearSession(): void {
@@ -250,4 +275,52 @@ export function isWorkoutAssignedToAthlete(workout: Workout, athlete: Athlete): 
   if (scope === 'categoria') return workout.targetCategory === athlete.category;
   if (scope === 'atletas') return Boolean(workout.targetAthleteIds?.includes(athlete.id));
   return false;
+}
+
+function loadLocalList<T>(key: string): T[] {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalList<T>(key: string, list: T[]): void {
+  localStorage.setItem(key, JSON.stringify(list));
+}
+
+export function loadLocalResults(): SwimResult[] {
+  return loadLocalList<SwimResult>(RESULTS_KEY);
+}
+export function saveLocalResults(results: SwimResult[]): void {
+  saveLocalList(RESULTS_KEY, results);
+}
+
+export function loadLocalStandards(): QualifyingStandard[] {
+  return loadLocalList<QualifyingStandard>(STANDARDS_KEY);
+}
+export function saveLocalStandards(standards: QualifyingStandard[]): void {
+  saveLocalList(STANDARDS_KEY, standards);
+}
+
+export function loadLocalCssTests(): CssTest[] {
+  return loadLocalList<CssTest>(CSS_TESTS_KEY);
+}
+export function saveLocalCssTests(tests: CssTest[]): void {
+  saveLocalList(CSS_TESTS_KEY, tests);
+}
+
+export function loadLocalRpeLogs(): RpeLog[] {
+  return loadLocalList<RpeLog>(RPE_LOGS_KEY);
+}
+export function saveLocalRpeLogs(logs: RpeLog[]): void {
+  saveLocalList(RPE_LOGS_KEY, logs);
+}
+
+export function loadLocalWellness(): WellnessEntry[] {
+  return loadLocalList<WellnessEntry>(WELLNESS_KEY);
+}
+export function saveLocalWellness(entries: WellnessEntry[]): void {
+  saveLocalList(WELLNESS_KEY, entries);
 }

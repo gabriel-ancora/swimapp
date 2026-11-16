@@ -1,9 +1,12 @@
-import { mutation, query } from './_generated/server';
-import { v } from 'convex/values';
+import { internalMutation, mutation, query } from './_generated/server';
+import type { Doc } from './_generated/dataModel';
+import { ConvexError, v } from 'convex/values';
 import { workoutItemValidator } from './schema';
+import { getCoachFromSession, requireCoach, requireOwnedTeam } from './lib/session';
 
 const workoutPayloadValidator = {
   id: v.string(),
+  /** Ignored by the server: the owner always comes from the session. */
   coachId: v.optional(v.string()),
   teamId: v.optional(v.string()),
   targetScope: v.optional(
@@ -30,119 +33,55 @@ const workoutPayloadValidator = {
   updatedAt: v.string(),
 };
 
-function mapWorkoutDoc(doc: {
-  clientId: string;
-  coachId?: string;
-  teamId?: string;
-  targetScope?: 'equipe' | 'categoria' | 'atletas';
-  targetCategory?: string;
-  targetAthleteIds?: string[];
-  planId?: string;
-  phaseId?: string;
-  periodizationPhase?: string;
-  targetCompetition?: string;
-  targetEvent?: string;
-  targetTime?: string;
-  completed?: boolean;
-  absentAthleteIds?: string[];
-  title: string;
-  date: string;
-  poolLength: 25 | 50;
-  objective: string;
-  coach: string;
-  generalNotes: string;
-  items: Array<{
-    id: string;
-    block: 'aquecimento' | 'principal' | 'complementar';
-    reps: number;
-    distance: number;
-    seriesType: string;
-    interval: string;
-    zoneId: 'Z1' | 'Z2' | 'Z3' | 'Z4' | 'Z5' | 'VEL';
-    equipment: string[];
-    notes: string;
-  }>;
-  createdAt: string;
-  updatedAt: string;
-}) {
-  return {
-    id: doc.clientId,
-    coachId: doc.coachId,
-    teamId: doc.teamId,
-    targetScope: doc.targetScope,
-    targetCategory: doc.targetCategory,
-    targetAthleteIds: doc.targetAthleteIds,
-    planId: doc.planId,
-    phaseId: doc.phaseId,
-    periodizationPhase: doc.periodizationPhase,
-    targetCompetition: doc.targetCompetition,
-    targetEvent: doc.targetEvent,
-    targetTime: doc.targetTime,
-    completed: doc.completed,
-    absentAthleteIds: doc.absentAthleteIds,
-    title: doc.title,
-    date: doc.date,
-    poolLength: doc.poolLength,
-    objective: doc.objective,
-    coach: doc.coach,
-    generalNotes: doc.generalNotes,
-    items: doc.items,
-    createdAt: doc.createdAt,
-    updatedAt: doc.updatedAt,
-  };
+function mapWorkoutDoc({ _id, _creationTime, clientId, ...rest }: Doc<'workouts'>) {
+  return { id: clientId, ...rest };
 }
 
+/** All workouts owned by the logged-in coach, most recently updated first. */
 export const list = query({
-  args: {
-    coachId: v.optional(v.string()),
-  },
-  handler: async (ctx, { coachId }) => {
-    const docs = await ctx.db.query('workouts').withIndex('by_updatedAt').order('desc').collect();
-    const filtered = coachId
-      ? docs.filter((d) => !d.coachId || d.coachId === coachId)
-      : docs;
-    return filtered.map(mapWorkoutDoc);
+  args: { sessionToken: v.string() },
+  handler: async (ctx, { sessionToken }) => {
+    const coach = await getCoachFromSession(ctx, sessionToken);
+    if (!coach) return [];
+
+    const docs = await ctx.db
+      .query('workouts')
+      .withIndex('by_coachId', (q) => q.eq('coachId', coach.clientId))
+      .collect();
+
+    return docs
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .map(mapWorkoutDoc);
   },
 });
 
 export const upsert = mutation({
   args: {
+    sessionToken: v.string(),
     workout: v.object(workoutPayloadValidator),
   },
-  handler: async (ctx, { workout }) => {
+  handler: async (ctx, { sessionToken, workout }) => {
+    const coach = await requireCoach(ctx, sessionToken);
+    if (workout.teamId) await requireOwnedTeam(ctx, coach, workout.teamId);
+
     const existing = await ctx.db
       .query('workouts')
       .withIndex('by_clientId', (q) => q.eq('clientId', workout.id))
       .unique();
+    if (existing && existing.coachId !== coach.clientId) {
+      throw new ConvexError('Treino não encontrado ou sem permissão de acesso.');
+    }
 
+    const { id, ...fields } = workout;
     const record = {
-      clientId: workout.id,
-      coachId: workout.coachId,
-      teamId: workout.teamId,
-      targetScope: workout.targetScope,
-      targetCategory: workout.targetCategory,
-      targetAthleteIds: workout.targetAthleteIds,
-      planId: workout.planId,
-      phaseId: workout.phaseId,
-      periodizationPhase: workout.periodizationPhase,
-      targetCompetition: workout.targetCompetition,
-      targetEvent: workout.targetEvent,
-      targetTime: workout.targetTime,
-      completed: workout.completed,
-      absentAthleteIds: workout.absentAthleteIds,
-      title: workout.title,
-      date: workout.date,
-      poolLength: workout.poolLength,
-      objective: workout.objective,
-      coach: workout.coach,
-      generalNotes: workout.generalNotes,
-      items: workout.items,
-      createdAt: workout.createdAt,
-      updatedAt: workout.updatedAt,
+      ...fields,
+      clientId: id,
+      coachId: coach.clientId,
+      createdAt: existing?.createdAt ?? workout.createdAt,
     };
 
     if (existing) {
-      await ctx.db.patch(existing._id, record);
+      await ctx.db.replace(existing._id, record);
     } else {
       await ctx.db.insert('workouts', record);
     }
@@ -151,41 +90,41 @@ export const upsert = mutation({
 
 export const remove = mutation({
   args: {
+    sessionToken: v.string(),
     id: v.string(),
   },
-  handler: async (ctx, { id }) => {
+  handler: async (ctx, { sessionToken, id }) => {
+    const coach = await requireCoach(ctx, sessionToken);
     const existing = await ctx.db
       .query('workouts')
       .withIndex('by_clientId', (q) => q.eq('clientId', id))
       .unique();
-
-    if (existing) {
-      await ctx.db.delete(existing._id);
+    if (!existing) return;
+    if (existing.coachId !== coach.clientId) {
+      throw new ConvexError('Treino não encontrado ou sem permissão de acesso.');
     }
+    await ctx.db.delete(existing._id);
   },
 });
 
-export const seedIfEmpty = mutation({
+/**
+ * Inserts sample workouts for a coach who has none yet.
+ * Internal only — run from the Convex dashboard/CLI, never from the client.
+ */
+export const seedIfEmpty = internalMutation({
   args: {
+    coachId: v.string(),
     workouts: v.array(v.object(workoutPayloadValidator)),
   },
-  handler: async (ctx, { workouts }) => {
-    const first = await ctx.db.query('workouts').first();
+  handler: async (ctx, { coachId, workouts }) => {
+    const first = await ctx.db
+      .query('workouts')
+      .withIndex('by_coachId', (q) => q.eq('coachId', coachId))
+      .first();
     if (first) return;
 
-    for (const workout of workouts) {
-      await ctx.db.insert('workouts', {
-        clientId: workout.id,
-        title: workout.title,
-        date: workout.date,
-        poolLength: workout.poolLength,
-        objective: workout.objective,
-        coach: workout.coach,
-        generalNotes: workout.generalNotes,
-        items: workout.items,
-        createdAt: workout.createdAt,
-        updatedAt: workout.updatedAt,
-      });
+    for (const { id, ...fields } of workouts) {
+      await ctx.db.insert('workouts', { ...fields, clientId: id, coachId });
     }
   },
 });

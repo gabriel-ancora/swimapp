@@ -18,12 +18,15 @@ import type {
   Athlete,
   BlockType,
   CatalogDatabase,
+  CssTest,
   Team,
   TrainingPlan,
   Workout,
   WorkoutItem,
   WorkoutTargetScope,
 } from '../types/swimming';
+import { resolveWorkoutCssPace100Cs } from '../domain/pace';
+import { formatSwimTime } from '../domain/time';
 import { computeWorkoutStats, formatDateBR, formatMeters, generateId, getItemMeters } from '../utils/storage';
 import { SeriesComposer } from './SeriesComposer';
 
@@ -33,6 +36,7 @@ interface WorkoutBuilderProps {
   catalog: CatalogDatabase;
   activeTeam: Team | null;
   athletes: Athlete[];
+  cssTests?: CssTest[];
   plans?: TrainingPlan[];
   onChangeDraft: (updated: Workout) => void;
   onSaveWorkout: () => void;
@@ -50,12 +54,12 @@ const BLOCKS: Array<{ key: BlockType; title: string; subtitle: string }> = [
   },
   {
     key: 'principal',
-    title: 'Série Principal',
+    title: 'Série principal',
     subtitle: 'Bloco alvo da sessão (limiar, VO2, ritmo de prova ou velocidade)',
   },
   {
     key: 'complementar',
-    title: 'Complementares & Soltura',
+    title: 'Complementares & soltura',
     subtitle: 'Educativos, perna, braço, submerso e remoção de lactato',
   },
 ];
@@ -75,6 +79,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
   catalog,
   activeTeam,
   athletes,
+  cssTests = [],
   plans = [],
   onChangeDraft,
   onSaveWorkout,
@@ -92,7 +97,8 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
   );
   const [quickAthleteEvent, setQuickAthleteEvent] = useState('');
 
-  const stats = computeWorkoutStats(draft.items, catalog.zones);
+  const effectiveCss = resolveWorkoutCssPace100Cs(draft, athletes, cssTests);
+  const stats = computeWorkoutStats(draft.items, catalog.zones, effectiveCss);
 
   const updateField = <K extends keyof Workout>(field: K, value: Workout[K]) => {
     onChangeDraft({ ...draft, [field]: value });
@@ -239,22 +245,18 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
     <div>
       <div className="page-header">
         <div className="page-title-group">
-          <span className="page-eyebrow">
-            {isEditingExisting ? 'Modo de Edição · Ficha Ativa' : 'Planejamento de Sessão'}
-          </span>
           <h1 className="page-title">
-            {isEditingExisting ? 'Modificar Treino' : 'Novo Treino de Alto Rendimento'}
+            {isEditingExisting ? 'Editar treino' : 'Novo treino'}
           </h1>
           <p className="page-subtitle">
-            Estruture aquecimento, séries principais e complementares com controle preciso de
-            intervalos e zonas fisiológicas.
+            Monte aquecimento, série principal e complementar. Volume e tempo são calculados enquanto você edita.
           </p>
         </div>
 
         <div className="page-actions">
           <button type="button" className="btn" onClick={onResetDraft}>
             <FilePlus2 size={15} />
-            Limpar / Novo
+            Limpar
           </button>
           <button type="button" className="btn" onClick={onPrintWorkout}>
             <Printer size={15} />
@@ -262,7 +264,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
           </button>
           <button type="button" className="btn btn-primary" onClick={onSaveWorkout}>
             <Save size={15} />
-            {isEditingExisting ? 'Salvar Alterações' : 'Salvar Treino'}
+            {isEditingExisting ? 'Salvar alterações' : 'Salvar treino'}
           </button>
         </div>
       </div>
@@ -272,7 +274,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
         <div>
           <div className="surface-card">
             <div className="card-header">
-              <h2 className="card-title">Identificação & Parâmetros da Sessão</h2>
+              <h2 className="card-title">Identificação & parâmetros da sessão</h2>
               <span className="mono-num" style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
                 {draft.items.length} {draft.items.length === 1 ? 'série' : 'séries'}
               </span>
@@ -280,7 +282,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
             <div className="card-section">
               <div className="form-grid">
                 <div className="field col-6">
-                  <label>Título do Treino</label>
+                  <label>Título do treino</label>
                   <input
                     type="text"
                     className="input"
@@ -291,7 +293,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                 </div>
 
                 <div className="field col-3">
-                  <label>Data da Sessão</label>
+                  <label>Data da sessão</label>
                   <input
                     type="date"
                     className="input mono-num"
@@ -321,7 +323,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                 </div>
 
                 <div className="field col-6">
-                  <label>Objetivo Fisiológico</label>
+                  <label>Objetivo fisiológico</label>
                   <select
                     className="select"
                     value={draft.objective}
@@ -336,7 +338,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                 </div>
 
                 <div className="field col-6">
-                  <label>Técnico Responsável</label>
+                  <label>Técnico responsável</label>
                   <input
                     type="text"
                     className="input"
@@ -355,21 +357,21 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                         className={currentScope === 'equipe' ? 'active' : ''}
                         onClick={() => handleScopeChange('equipe')}
                       >
-                        Toda a Equipe
+                        Toda a equipe
                       </button>
                       <button
                         type="button"
                         className={currentScope === 'categoria' ? 'active' : ''}
                         onClick={() => handleScopeChange('categoria')}
                       >
-                        Grupo / Categoria
+                        Grupo / categoria
                       </button>
                       <button
                         type="button"
                         className={currentScope === 'atletas' ? 'active' : ''}
                         onClick={() => handleScopeChange('atletas')}
                       >
-                        Atletas Específicos
+                        Atletas específicos
                       </button>
                     </div>
 
@@ -390,17 +392,17 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                     {currentScope === 'atletas' && (
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
+                          <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
                             Selecione um ou mais atletas ({(draft.targetAthleteIds ?? []).length} selecionado{(draft.targetAthleteIds ?? []).length === 1 ? '' : 's'}):
                           </span>
                           {onQuickAddAthlete && (
                             <button
                               type="button"
                               className="btn btn-ghost btn-sm"
-                              style={{ padding: '2px 8px', fontSize: 11 }}
+                              style={{ padding: '2px 8px', fontSize: 12 }}
                               onClick={() => setShowQuickAthlete((v) => !v)}
                             >
-                              <Plus size={12} /> Novo Atleta Rápido
+                              <Plus size={12} /> Novo atleta rápido
                             </button>
                           )}
                         </div>
@@ -444,7 +446,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
 
                         {athletes.length === 0 ? (
                           <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
-                            Nenhum atleta cadastrado na equipe ainda. Use "Novo Atleta Rápido" acima.
+                            Nenhum atleta cadastrado na equipe ainda. Use "Novo atleta rápido" acima.
                           </span>
                         ) : (
                           <>
@@ -469,7 +471,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                                 <span
                                   style={{
                                     display: 'block',
-                                    fontSize: 11,
+                                    fontSize: 12,
                                     color: 'var(--ink-muted)',
                                     marginBottom: 4,
                                   }}
@@ -484,16 +486,22 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                                             {
                                               key: `${ath.id}-main`,
                                               event: ath.mainEvent,
-                                              targetTime: ath.targetTime ?? '',
-                                              bestTime: ath.bestTime,
+                                              targetTime:
+                                                ath.targetTime ??
+                                                (ath.targetTimeCs
+                                                  ? formatSwimTime(ath.targetTimeCs)
+                                                  : ''),
+                                              bestTime: ath.bestTime ?? '',
                                             },
                                           ]
                                         : []),
                                       ...(ath.events ?? []).map((e) => ({
                                         key: e.id,
                                         event: e.event,
-                                        targetTime: e.targetTime,
-                                        bestTime: e.bestTime,
+                                        targetTime:
+                                          e.targetTime ??
+                                          (e.targetTimeCs ? formatSwimTime(e.targetTimeCs) : ''),
+                                        bestTime: e.bestTime ?? '',
                                       })),
                                     ];
                                     return evs.map((ev) => (
@@ -532,9 +540,9 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                 <div className="field col-12">
                   <div className="workout-planning-box">
                     <div className="workout-planning-head">
-                      <span style={{ fontWeight: 700, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontWeight: 600, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         <Layers size={14} style={{ color: 'var(--accent-primary)' }} />
-                        Planejamento & Periodização
+                        Planejamento & periodização
                       </span>
                       {onGoToPlanning && (
                         <button
@@ -542,14 +550,14 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                           className="btn btn-ghost btn-sm"
                           onClick={onGoToPlanning}
                         >
-                          <Target size={13} /> Gerenciar Planejamentos
+                          <Target size={13} /> Gerenciar planejamentos
                         </button>
                       )}
                     </div>
 
                     <div className="form-grid">
                       <div className="field col-6">
-                        <label>Planejamento / Ciclo Alvo</label>
+                        <label>Planejamento / ciclo alvo</label>
                         <select
                           className="select"
                           value={draft.planId ?? ''}
@@ -566,7 +574,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                       </div>
 
                       <div className="field col-6">
-                        <label>Fase da Periodização</label>
+                        <label>Fase da periodização</label>
                         {selectedPlan && selectedPlan.phases.length > 0 ? (
                           <select
                             className="select"
@@ -597,7 +605,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                       </div>
 
                       <div className="field col-4">
-                        <label>Competição / Objetivo Alvo</label>
+                        <label>Competição / objetivo alvo</label>
                         <input
                           type="text"
                           className="input"
@@ -610,7 +618,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                       </div>
 
                       <div className="field col-4">
-                        <label>Prova Alvo</label>
+                        <label>Prova alvo</label>
                         <input
                           type="text"
                           className="input"
@@ -621,7 +629,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                       </div>
 
                       <div className="field col-4">
-                        <label>Tempo Alvo</label>
+                        <label>Tempo alvo</label>
                         <input
                           type="text"
                           className="input mono-num"
@@ -643,7 +651,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                 </div>
 
                 <div className="field col-12">
-                  <label>Observações Gerais do Treino</label>
+                  <label>Observações gerais do treino</label>
                   <textarea
                     className="textarea"
                     value={draft.generalNotes}
@@ -685,7 +693,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
                         }}
                       >
                         <Plus size={14} />
-                        Adicionar Série
+                        Adicionar série
                       </button>
                     </div>
                   </div>
@@ -842,14 +850,14 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
           <div className="surface-card card-section">
             <div className="metric-hero">
               <div>
-                <div className="metric-label">Volume Total</div>
+                <div className="metric-label">Volume total</div>
                 <div className="metric-big">{formatMeters(stats.totalMeters)}</div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div className="metric-label">Duração Est.</div>
+                <div className="metric-label">Duração est.</div>
                 <div
                   className="mono-num"
-                  style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink-secondary)' }}
+                  style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink-secondary)' }}
                 >
                   ~{stats.estimatedMinutes} min
                 </div>
@@ -872,7 +880,7 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
             </div>
 
             <div style={{ marginTop: 14 }}>
-              <div className="metric-label">Distribuição por Intensidade</div>
+              <div className="metric-label">Distribuição por intensidade</div>
               <div className="zone-bar-track">
                 {stats.byZone
                   .filter((z) => z.meters > 0)
@@ -916,11 +924,11 @@ export const WorkoutBuilder: React.FC<WorkoutBuilderProps> = ({
             <div className="action-stack">
               <button type="button" className="btn btn-primary" onClick={onSaveWorkout}>
                 <Save size={15} />
-                {isEditingExisting ? 'Salvar Alterações no Treino' : 'Salvar em Meus Treinos'}
+                {isEditingExisting ? 'Salvar alterações' : 'Salvar treino'}
               </button>
               <button type="button" className="btn btn-dark" onClick={onPrintWorkout}>
                 <Printer size={15} />
-                Imprimir Ficha de Borda
+                Imprimir ficha de borda
               </button>
             </div>
           </div>

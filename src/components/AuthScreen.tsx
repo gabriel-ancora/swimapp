@@ -1,17 +1,10 @@
 import React, { useState } from 'react';
-import {
-  Activity,
-  ArrowRight,
-  CheckCircle2,
-  Eye,
-  EyeOff,
-  Lock,
-  Mail,
-  ShieldCheck,
-  User,
-  Waves,
-} from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import piscinaImg from '../assets/piscina.webp';
+import { getErrorMessage } from '../domain/errors';
+import { Logo } from './Logo';
+
+const CURRENT_YEAR = new Date().getFullYear();
 
 interface AuthScreenProps {
   syncMode: 'cloud' | 'local';
@@ -32,7 +25,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ syncMode, onLogin, onReg
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [cref, setCref] = useState('');
-  const [specialty, setSpecialty] = useState('Alto Rendimento');
+  const [specialty, setSpecialty] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -50,8 +43,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ syncMode, onLogin, onReg
         setError('Informe o nome completo do treinador.');
         return;
       }
-      if (password.length < 6) {
-        setError('A senha deve ter pelo menos 6 caracteres.');
+      if (password.length < 8) {
+        setError('A senha deve ter pelo menos 8 caracteres.');
         return;
       }
     }
@@ -70,222 +63,175 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ syncMode, onLogin, onReg
         });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Não foi possível autenticar.');
+      setError(getErrorMessage(err, 'Não foi possível autenticar.'));
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const switchMode = (next: 'login' | 'register') => {
+    setMode(next);
+    setError(null);
+  };
+
   return (
-    <div className="auth-split">
-      {/* Visual Hero Panel */}
-      <aside className="auth-hero">
-        <img
-          src={piscinaImg}
-          alt="Piscina olímpica de treinamento"
-          className="auth-hero-img"
-        />
-        <div className="auth-hero-overlay" />
+    <div className="auth-layout">
+      <main className="auth-form-side">
+        <Logo />
 
-        <div className="auth-hero-content">
-          <div className="auth-hero-top">
-            <div className="auth-hero-badge">
-              <Activity size={14} />
-              <span>RAIA // PRO · PERFORMANCE AQUÁTICA</span>
-            </div>
-          </div>
-
-          <div className="auth-hero-bottom">
-            <h1 className="auth-hero-title">
-              Prescrição técnica, telemetria e gestão de elenco em um só lugar.
+        <div className="auth-form-wrap">
+          <div className="auth-panel-inner">
+            <h1 className="auth-title">
+              {mode === 'login' ? 'Entrar na sua conta' : 'Criar sua conta'}
             </h1>
-            <p className="auth-hero-desc">
-              Estruture sessões por zonas fisiológicas, gerencie categorias e acompanhe a evolução
-              estatística de cada atleta em tempo real.
-            </p>
-
-            <div className="auth-hero-features">
-              <div className="auth-hero-feature">
-                <CheckCircle2 size={15} />
-                <span>Zonas Z1–VEL</span>
-              </div>
-              <div className="auth-hero-feature">
-                <CheckCircle2 size={15} />
-                <span>Análise de Atletas</span>
-              </div>
-              <div className="auth-hero-feature">
-                <CheckCircle2 size={15} />
-                <span>Multi-dispositivo</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      {/* Form Panel */}
-      <main className="auth-panel">
-        <div className="auth-panel-inner">
-          <div className="auth-brand-row">
-            <div className="brand">
-              <div className="brand-mark">
-                <Waves size={18} />
-              </div>
-              <div className="brand-text">
-                <span className="brand-name">RAIA // PRO</span>
-                <span className="brand-sub">Portal do Treinador</span>
-              </div>
-            </div>
-            <span className={`sync-pill ${syncMode}`}>
-              {syncMode === 'cloud' ? 'Nuvem Ativa' : 'Modo Local'}
-            </span>
-          </div>
-
-          <div className="auth-heading-block">
-            <h2 className="auth-title">
-              {mode === 'login' ? 'Acesse sua área técnica' : 'Criar conta de treinador'}
-            </h2>
             <p className="auth-subtitle">
               {mode === 'login'
-                ? 'Entre com suas credenciais para gerenciar sua equipe e treinos.'
-                : 'Configure seu perfil para criar sua equipe e cadastrar atletas.'}
+                ? 'Bem-vindo de volta. Seus treinos e atletas estão onde você deixou.'
+                : 'Leva um minuto. Depois é só criar sua equipe e cadastrar os atletas.'}
             </p>
-          </div>
 
-          <div className="segmented auth-mode-switch">
-            <button
-              type="button"
-              className={mode === 'login' ? 'active' : ''}
-              onClick={() => {
-                setMode('login');
-                setError(null);
-              }}
-            >
-              Entrar
-            </button>
-            <button
-              type="button"
-              className={mode === 'register' ? 'active' : ''}
-              onClick={() => {
-                setMode('register');
-                setError(null);
-              }}
-            >
-              Cadastrar Treinador
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="auth-form">
-            {mode === 'register' && (
-              <div className="field">
-                <label>Nome completo</label>
-                <div className="input-icon-wrap">
-                  <User size={15} />
+            <form onSubmit={handleSubmit} className="auth-form" noValidate>
+              {mode === 'register' && (
+                <div className="field">
+                  <label htmlFor="auth-name">Nome</label>
                   <input
+                    id="auth-name"
                     type="text"
                     className="input"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Ex: Prof. Carlos Mendes"
+                    placeholder="Como os atletas te chamam"
                     autoComplete="name"
                     required
                   />
                 </div>
-              </div>
-            )}
+              )}
 
-            <div className="field">
-              <label>E-mail profissional</label>
-              <div className="input-icon-wrap">
-                <Mail size={15} />
+              <div className="field">
+                <label htmlFor="auth-email">E-mail</label>
                 <input
+                  id="auth-email"
                   type="email"
                   className="input"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="treinador@equipe.com.br"
+                  placeholder="voce@clube.com.br"
                   autoComplete="email"
                   required
                 />
               </div>
-            </div>
 
-            <div className="field">
-              <label>Senha</label>
-              <div className="input-icon-wrap has-right-action">
-                <Lock size={15} />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  className="input"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={mode === 'register' ? 'Mínimo 6 caracteres' : 'Digite sua senha'}
-                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                  required
-                />
-                <button
-                  type="button"
-                  className="input-right-btn"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-                >
-                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                </button>
-              </div>
-            </div>
-
-            {mode === 'register' && (
-              <div className="form-grid">
-                <div className="field col-6">
-                  <label>CREF (Opcional)</label>
+              <div className="field">
+                <label htmlFor="auth-password">Senha</label>
+                <div className="input-icon-wrap has-right-action">
                   <input
-                    type="text"
-                    className="input mono-num"
-                    value={cref}
-                    onChange={(e) => setCref(e.target.value)}
-                    placeholder="012345-G/SP"
-                  />
-                </div>
-                <div className="field col-6">
-                  <label>Especialidade</label>
-                  <input
-                    type="text"
+                    id="auth-password"
+                    type={showPassword ? 'text' : 'password'}
                     className="input"
-                    value={specialty}
-                    onChange={(e) => setSpecialty(e.target.value)}
-                    placeholder="Ex: Velocidade, Fundo"
+                    style={{ paddingLeft: 11 }}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={mode === 'register' ? 'Pelo menos 8 caracteres' : ''}
+                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                    required
                   />
+                  <button
+                    type="button"
+                    className="input-right-btn"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                 </div>
               </div>
-            )}
 
-            {error && (
-              <div className="auth-error" role="alert">
-                {error}
-              </div>
-            )}
+              {mode === 'register' && (
+                <div className="form-grid">
+                  <div className="field col-6">
+                    <label htmlFor="auth-cref">
+                      CREF <span style={{ color: 'var(--ink-muted)', fontWeight: 400 }}>(opcional)</span>
+                    </label>
+                    <input
+                      id="auth-cref"
+                      type="text"
+                      className="input"
+                      value={cref}
+                      onChange={(e) => setCref(e.target.value)}
+                      placeholder="012345-G/SP"
+                    />
+                  </div>
+                  <div className="field col-6">
+                    <label htmlFor="auth-specialty">Especialidade</label>
+                    <input
+                      id="auth-specialty"
+                      type="text"
+                      className="input"
+                      value={specialty}
+                      onChange={(e) => setSpecialty(e.target.value)}
+                      placeholder="Velocidade, fundo…"
+                    />
+                  </div>
+                </div>
+              )}
 
-            <button
-              type="submit"
-              className="btn btn-primary auth-submit-btn"
-              disabled={isSubmitting}
-            >
-              <ShieldCheck size={16} />
-              <span>
+              {error && (
+                <div className="auth-error" role="alert">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="btn btn-primary auth-submit-btn"
+                disabled={isSubmitting}
+              >
                 {isSubmitting
-                  ? 'Autenticando...'
+                  ? mode === 'login'
+                    ? 'Entrando…'
+                    : 'Criando conta…'
                   : mode === 'login'
-                    ? 'Entrar no Sistema'
-                    : 'Criar Conta e Acessar'}
-              </span>
-              <ArrowRight size={15} />
-            </button>
-          </form>
+                    ? 'Entrar'
+                    : 'Criar conta'}
+              </button>
+            </form>
 
-          <div className="auth-footer">
-            <span>Acesso protegido · Sessão criptografada</span>
+            <p className="auth-switch">
+              {mode === 'login' ? (
+                <>
+                  Ainda não tem conta?{' '}
+                  <button type="button" className="link-btn" onClick={() => switchMode('register')}>
+                    Criar conta
+                  </button>
+                </>
+              ) : (
+                <>
+                  Já tem conta?{' '}
+                  <button type="button" className="link-btn" onClick={() => switchMode('login')}>
+                    Entrar
+                  </button>
+                </>
+              )}
+            </p>
+
+            {syncMode === 'local' && (
+              <p className="auth-local-note">
+                Modo local: os dados ficam salvos apenas neste navegador.
+              </p>
+            )}
           </div>
         </div>
+
+        <span className="auth-legal">© {CURRENT_YEAR} Raia</span>
       </main>
+
+      <aside className="auth-visual" aria-hidden="true">
+        <img src={piscinaImg} alt="" />
+        <div className="auth-visual-caption">
+          <p>Monte o treino, acompanhe a carga e chegue à competição com o plano em dia.</p>
+          <span>Treinos, periodização e análise de atletas em um só lugar.</span>
+        </div>
+      </aside>
     </div>
   );
 };

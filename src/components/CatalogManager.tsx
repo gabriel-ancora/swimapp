@@ -119,16 +119,14 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
     <div>
       <div className="page-header">
         <div className="page-title-group">
-          <span className="page-eyebrow">Base Própria · Dados Mestres</span>
-          <h1 className="page-title">Base Técnica de Treinos</h1>
+          <h1 className="page-title">Base técnica</h1>
           <p className="page-subtitle">
-            Personalize os tipos de séries, metragens, intervalos e equipamentos disponíveis no
-            montador de treinos.
+            Tipos de série, metragens, intervalos e equipamentos que aparecem ao montar um treino.
           </p>
         </div>
 
         <button type="button" className="btn" onClick={onResetCatalog}>
-          <RotateCcw size={14} /> Restaurar Padrão de Fábrica
+          <RotateCcw size={14} /> Restaurar padrão
         </button>
       </div>
 
@@ -137,7 +135,7 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
         <div className="surface-card">
           <div className="card-header">
             <h2 className="card-title">
-              <Database size={15} /> Tipos de Série & Estilos
+              <Database size={15} /> Tipos de série & estilos
             </h2>
             <span className="mono-num" style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
               {catalog.seriesTypes.length} itens
@@ -171,7 +169,7 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
               {catalog.seriesTypes.map((st) => (
                 <span key={st.id} className="db-chip">
                   <span>{st.name}</span>
-                  <span style={{ fontSize: 10, color: 'var(--ink-muted)', fontWeight: 500 }}>
+                  <span style={{ fontSize: 12, color: 'var(--ink-muted)', fontWeight: 500 }}>
                     {st.category}
                   </span>
                   <button
@@ -190,7 +188,7 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
         {/* Metragens */}
         <div className="surface-card">
           <div className="card-header">
-            <h2 className="card-title">Metragens Padrão (m)</h2>
+            <h2 className="card-title">Metragens padrão (m)</h2>
             <span className="mono-num" style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
               {catalog.distances.length} itens
             </span>
@@ -227,7 +225,7 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
         {/* Intervalos */}
         <div className="surface-card">
           <div className="card-header">
-            <h2 className="card-title">Intervalos & Saídas</h2>
+            <h2 className="card-title">Intervalos & saídas</h2>
             <span className="mono-num" style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
               {catalog.intervals.length} itens
             </span>
@@ -262,7 +260,7 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
         {/* Equipamentos & Objetivos */}
         <div className="surface-card">
           <div className="card-header">
-            <h2 className="card-title">Equipamentos & Objetivos</h2>
+            <h2 className="card-title">Equipamentos & objetivos</h2>
           </div>
           <div className="card-section" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             <div>
@@ -295,7 +293,7 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
 
             <div style={{ borderTop: '1px solid var(--border-hairline)', paddingTop: 14 }}>
               <div className="metric-label" style={{ marginBottom: 8 }}>
-                Objetivos de Treino
+                Objetivos de treino
               </div>
               <form onSubmit={addObjective} className="catalog-add-form">
                 <input
@@ -327,7 +325,7 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
       {/* Zonas Fisiológicas (Reference) */}
       <div className="surface-card" style={{ marginTop: 16 }}>
         <div className="card-header">
-          <h2 className="card-title">Escala de Intensidade Fisiológica (Z1 – VEL)</h2>
+          <h2 className="card-title">Escala de intensidade fisiológica (Z1 – VEL)</h2>
         </div>
         <div className="card-section">
           <div
@@ -359,7 +357,7 @@ export const CatalogManager: React.FC<CatalogManagerProps> = ({
                     {z.code} · {z.name}
                   </strong>
                 </div>
-                <div className="mono-num" style={{ fontSize: 11, color: z.textHex, opacity: 0.85 }}>
+                <div className="mono-num" style={{ fontSize: 12, color: z.textHex, opacity: 0.85 }}>
                   FC Alvo: {z.hrRange}
                 </div>
                 <p style={{ margin: '6px 0 0 0', fontSize: 12, color: 'var(--ink-secondary)' }}>

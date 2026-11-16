@@ -1,10 +1,12 @@
 import { mutation, query } from './_generated/server';
-import { v } from 'convex/values';
+import { ConvexError, v } from 'convex/values';
 import { periodizationPhaseValidator } from './schema';
+import { getCoachFromSession, requireCoach, requireOwnedTeam } from './lib/session';
 
 const planPayloadValidator = {
   id: v.string(),
-  coachId: v.string(),
+  /** Ignored by the server: the owner always comes from the session. */
+  coachId: v.optional(v.string()),
   teamId: v.optional(v.string()),
   title: v.string(),
   planType: v.union(
@@ -29,14 +31,15 @@ const planPayloadValidator = {
   updatedAt: v.string(),
 };
 
-export const listByCoach = query({
-  args: {
-    coachId: v.string(),
-  },
-  handler: async (ctx, { coachId }) => {
+export const list = query({
+  args: { sessionToken: v.string() },
+  handler: async (ctx, { sessionToken }) => {
+    const coach = await getCoachFromSession(ctx, sessionToken);
+    if (!coach) return [];
+
     const docs = await ctx.db
       .query('plans')
-      .withIndex('by_coachId', (q) => q.eq('coachId', coachId))
+      .withIndex('by_coachId', (q) => q.eq('coachId', coach.clientId))
       .collect();
 
     return docs
@@ -68,17 +71,24 @@ export const listByCoach = query({
 
 export const upsert = mutation({
   args: {
+    sessionToken: v.string(),
     plan: v.object(planPayloadValidator),
   },
-  handler: async (ctx, { plan }) => {
+  handler: async (ctx, { sessionToken, plan }) => {
+    const coach = await requireCoach(ctx, sessionToken);
+    if (plan.teamId) await requireOwnedTeam(ctx, coach, plan.teamId);
+
     const existing = await ctx.db
       .query('plans')
       .withIndex('by_clientId', (q) => q.eq('clientId', plan.id))
       .unique();
+    if (existing && existing.coachId !== coach.clientId) {
+      throw new ConvexError('Planejamento não encontrado ou sem permissão de acesso.');
+    }
 
     const record = {
       clientId: plan.id,
-      coachId: plan.coachId,
+      coachId: coach.clientId,
       teamId: plan.teamId,
       title: plan.title,
       planType: plan.planType,
@@ -95,7 +105,7 @@ export const upsert = mutation({
       objective: plan.objective,
       notes: plan.notes,
       phases: plan.phases,
-      createdAt: plan.createdAt,
+      createdAt: existing?.createdAt ?? plan.createdAt,
       updatedAt: plan.updatedAt,
     };
 
@@ -109,16 +119,19 @@ export const upsert = mutation({
 
 export const remove = mutation({
   args: {
+    sessionToken: v.string(),
     id: v.string(),
   },
-  handler: async (ctx, { id }) => {
+  handler: async (ctx, { sessionToken, id }) => {
+    const coach = await requireCoach(ctx, sessionToken);
     const existing = await ctx.db
       .query('plans')
       .withIndex('by_clientId', (q) => q.eq('clientId', id))
       .unique();
-
-    if (existing) {
-      await ctx.db.delete(existing._id);
+    if (!existing) return;
+    if (existing.coachId !== coach.clientId) {
+      throw new ConvexError('Planejamento não encontrado ou sem permissão de acesso.');
     }
+    await ctx.db.delete(existing._id);
   },
 });

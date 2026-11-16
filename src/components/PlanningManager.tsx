@@ -30,6 +30,8 @@ import type {
   WorkoutTargetScope,
   ZoneId,
 } from '../types/swimming';
+import { addDaysISO, todayLocalISO } from '../domain/date';
+import { formatSwimTime } from '../domain/time';
 import { formatDateBR, generateId } from '../utils/storage';
 
 interface PlanningManagerProps {
@@ -47,32 +49,25 @@ interface PlanningManagerProps {
 
 const PLAN_TYPE_LABELS: Record<PlanType, { label: string; badgeClass: string }> = {
   competicao_alvo: { label: 'Competição Alvo', badgeClass: 'plan-badge-comp' },
-  tempo_alvo: { label: 'Tempo Alvo (Atleta)', badgeClass: 'plan-badge-time' },
-  objetivo_geral: { label: 'Objetivo Geral', badgeClass: 'plan-badge-goal' },
+  tempo_alvo: { label: 'Tempo alvo (atleta)', badgeClass: 'plan-badge-time' },
+  objetivo_geral: { label: 'Objetivo geral', badgeClass: 'plan-badge-goal' },
 };
 
 const PHASE_META: Record<
   PeriodizationPhaseType,
   { label: string; color: string; defaultZones: ZoneId[] }
 > = {
-  base: { label: 'Base Geral', color: '#0d9488', defaultZones: ['Z1', 'Z2'] },
-  especifico: { label: 'Específico', color: '#0057ff', defaultZones: ['Z2', 'Z3', 'Z4'] },
+  base: { label: 'Base geral', color: '#5B93C4', defaultZones: ['Z1', 'Z2'] },
+  especifico: { label: 'Específico', color: '#2F5F9F', defaultZones: ['Z2', 'Z3', 'Z4'] },
   pre_competitivo: {
     label: 'Pré-Competitivo',
-    color: '#7c3aed',
+    color: '#7A6FB0',
     defaultZones: ['Z4', 'Z5', 'VEL'],
   },
-  polimento: { label: 'Polimento (Taper)', color: '#d97706', defaultZones: ['Z1', 'VEL'] },
-  competicao: { label: 'Competição Alvo', color: '#dc2626', defaultZones: ['VEL'] },
-  transicao: { label: 'Transição / Regenerativo', color: '#64748b', defaultZones: ['Z1'] },
+  polimento: { label: 'Polimento', color: '#E2A541', defaultZones: ['Z1', 'VEL'] },
+  competicao: { label: 'Competição', color: '#A8322F', defaultZones: ['VEL'] },
+  transicao: { label: 'Transição', color: '#9C978F', defaultZones: ['Z1'] },
 };
-
-function addDaysISO(isoDate: string, days: number): string {
-  const base = new Date(`${isoDate}T00:00:00`);
-  if (Number.isNaN(base.getTime())) return isoDate;
-  base.setDate(base.getDate() + days);
-  return base.toISOString().slice(0, 10);
-}
 
 function diffDaysISO(startIso: string, endIso: string): number {
   const a = new Date(`${startIso}T00:00:00`);
@@ -84,13 +79,13 @@ function diffDaysISO(startIso: string, endIso: string): number {
 function createEmptyPhase(startDate: string, endDate: string): PeriodizationPhase {
   return {
     id: generateId('ph'),
-    name: 'Nova Fase',
+    name: 'Nova fase',
     phaseType: 'base',
     startDate,
     endDate,
     focus: '',
     targetZones: ['Z1', 'Z2'],
-    intensityLabel: 'Moderada · Controle Técnico',
+    intensityLabel: 'Moderada · controle técnico',
     weeklySessions: 5,
     notes: '',
   };
@@ -116,37 +111,37 @@ function buildSuggestedPhases(startDate: string, endDate: string): Periodization
   return [
     {
       id: generateId('ph'),
-      name: '01 · Base Aeróbica & Técnica',
+      name: '01 · Base aeróbica & técnica',
       phaseType: 'base',
       startDate,
       endDate: d1,
       focus: 'Construção aeróbica (Z1/Z2), eficiência de braçada, saídas e viradas.',
       targetZones: ['Z1', 'Z2'],
-      intensityLabel: 'Volume progressivo · Baixa/Moderada',
+      intensityLabel: 'Volume progressivo · baixa/moderada',
       weeklySessions: 5,
       notes: 'Priorizar mecânica de nado e controle respiratório.',
     },
     {
       id: generateId('ph'),
-      name: '02 · Desenvolvimento Específico',
+      name: '02 · Desenvolvimento específico',
       phaseType: 'especifico',
       startDate: d2Start,
       endDate: d2,
       focus: 'Limiar anaeróbico (Z3/Z4) e séries específicas da prova alvo.',
       targetZones: ['Z2', 'Z3', 'Z4'],
-      intensityLabel: 'Moderada/Alta · Limiar',
+      intensityLabel: 'Moderada/alta · limiar',
       weeklySessions: 6,
       notes: 'Introduzir séries fracionadas em ritmo controlado.',
     },
     {
       id: generateId('ph'),
-      name: '03 · Pré-Competitivo & Ritmo',
+      name: '03 · Pré-Competitivo & ritmo',
       phaseType: 'pre_competitivo',
       startDate: d3Start,
       endDate: d3,
       focus: 'Tolerância ao lactato (Z5), ritmo de prova e séries quebradas (Broken).',
       targetZones: ['Z4', 'Z5', 'VEL'],
-      intensityLabel: 'Alta intensidade · Ritmo de Prova',
+      intensityLabel: 'Alta intensidade · ritmo de prova',
       weeklySessions: 6,
       notes: 'Monitorar parciais e frequência de braçada em velocidade de prova.',
     },
@@ -158,19 +153,19 @@ function buildSuggestedPhases(startDate: string, endDate: string): Periodization
       endDate: d4,
       focus: 'Redução gradual de volume mantendo estímulos curtos de velocidade máxima.',
       targetZones: ['Z1', 'VEL'],
-      intensityLabel: 'Baixo volume · Alta qualidade',
+      intensityLabel: 'Baixo volume · alta qualidade',
       weeklySessions: 4,
       notes: 'Foco em recuperação neuromuscular, descanso e confiança.',
     },
     {
       id: generateId('ph'),
-      name: '05 · Competição Alvo',
+      name: '05 · Competição alvo',
       phaseType: 'competicao',
       startDate: d5Start <= endDate ? d5Start : endDate,
       endDate,
       focus: 'Ativação pré-prova, estratégia de parciais e soltura pós-prova.',
       targetZones: ['Z1', 'VEL'],
-      intensityLabel: 'Máxima · Dia de Prova',
+      intensityLabel: 'Máxima · dia de prova',
       weeklySessions: 3,
       notes: 'Execução da estratégia planejada.',
     },
@@ -189,7 +184,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
   onCreateWorkoutFromPlan,
   onQuickAddAthlete,
 }) => {
-  const [today] = useState(() => new Date().toISOString().slice(0, 10));
+  const [today] = useState(() => todayLocalISO());
   const defaultEnd = addDaysISO(today, 56);
 
   const [isFormOpen, setIsFormOpen] = useState(plans.length === 0);
@@ -243,8 +238,9 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
           key: `${ath.id}-main`,
           label: `${firstName} · ${ath.mainEvent} (Principal)`,
           event: ath.mainEvent,
-          bestTime: ath.bestTime,
-          targetTime: ath.targetTime ?? '',
+          bestTime: ath.bestTime ?? '',
+          targetTime:
+            ath.targetTime ?? (ath.targetTimeCs ? formatSwimTime(ath.targetTimeCs) : ''),
         });
       }
       for (const ev of ath.events ?? []) {
@@ -252,8 +248,8 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
           key: `${ath.id}-${ev.id}`,
           label: `${firstName} · ${ev.event}`,
           event: ev.event,
-          bestTime: ev.bestTime,
-          targetTime: ev.targetTime,
+          bestTime: ev.bestTime ?? '',
+          targetTime: ev.targetTime ?? (ev.targetTimeCs ? formatSwimTime(ev.targetTimeCs) : ''),
         });
       }
     }
@@ -393,7 +389,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
         ? competitionName.trim()
         : planType === 'tempo_alvo' && selectedAthletes.length > 0 && targetEvent.trim()
           ? `${selectedAthletes.map((a) => a.name.split(' ')[0]).join(', ')} · ${targetEvent.trim()}`
-          : 'Planejamento de Ciclo');
+          : 'Planejamento de ciclo');
 
     const payload: TrainingPlan = {
       id: existing?.id ?? generateId('pln'),
@@ -439,18 +435,16 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
     <div>
       <div className="page-header">
         <div className="page-title-group">
-          <span className="page-eyebrow">Periodização & Macrociclos</span>
-          <h1 className="page-title">Planejamento & Metas</h1>
+          <h1 className="page-title">Planejamento</h1>
           <p className="page-subtitle">
-            Crie planejamentos detalhados para competições alvo, tempos alvo de atletas específicos e
-            estruture fases de periodização conectadas aos seus treinos.
+            Macrociclos com fases, competições e tempos-alvo. Os treinos podem ser ligados a cada fase.
           </p>
         </div>
 
         <div className="page-actions">
           <button type="button" className="btn btn-primary" onClick={openNewForm}>
             <Plus size={15} />
-            Novo Planejamento
+            Novo planejamento
           </button>
         </div>
       </div>
@@ -461,7 +455,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
           <div className="card-header">
             <h2 className="card-title">
               <Target size={15} />{' '}
-              {editingPlanId ? 'Editar Planejamento & Periodização' : 'Novo Planejamento & Periodização'}
+              {editingPlanId ? 'Editar planejamento & periodização' : 'Novo planejamento & periodização'}
             </h2>
             <button
               type="button"
@@ -478,7 +472,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
           <form className="card-section" onSubmit={handleSubmit}>
             <div className="form-grid">
               <div className="field col-12">
-                <label>Tipo de Planejamento</label>
+                <label>Tipo de planejamento</label>
                 <div className="segmented">
                   <button
                     type="button"
@@ -486,7 +480,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                     onClick={() => setPlanType('competicao_alvo')}
                   >
                     <Trophy size={13} style={{ marginRight: 5, verticalAlign: '-2px' }} />
-                    Competição Alvo
+                    Competição alvo
                   </button>
                   <button
                     type="button"
@@ -497,7 +491,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                     }}
                   >
                     <Target size={13} style={{ marginRight: 5, verticalAlign: '-2px' }} />
-                    Tempo Alvo (Atleta)
+                    Tempo alvo (atleta)
                   </button>
                   <button
                     type="button"
@@ -505,13 +499,13 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                     onClick={() => setPlanType('objetivo_geral')}
                   >
                     <Flag size={13} style={{ marginRight: 5, verticalAlign: '-2px' }} />
-                    Objetivo Geral / Ciclo
+                    Objetivo geral / ciclo
                   </button>
                 </div>
               </div>
 
               <div className="field col-6">
-                <label>Título do Planejamento</label>
+                <label>Título do planejamento</label>
                 <input
                   type="text"
                   className="input"
@@ -523,7 +517,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
               </div>
 
               <div className="field col-3">
-                <label>Início do Ciclo</label>
+                <label>Início do ciclo</label>
                 <input
                   type="date"
                   className="input mono-num"
@@ -534,7 +528,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
               </div>
 
               <div className="field col-3">
-                <label>Fim / Data Alvo</label>
+                <label>Fim / data alvo</label>
                 <input
                   type="date"
                   className="input mono-num"
@@ -552,21 +546,21 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                     className={targetScope === 'equipe' ? 'active' : ''}
                     onClick={() => setTargetScope('equipe')}
                   >
-                    Toda a Equipe
+                    Toda a equipe
                   </button>
                   <button
                     type="button"
                     className={targetScope === 'categoria' ? 'active' : ''}
                     onClick={() => setTargetScope('categoria')}
                   >
-                    Categoria / Grupo
+                    Categoria / grupo
                   </button>
                   <button
                     type="button"
                     className={targetScope === 'atletas' ? 'active' : ''}
                     onClick={() => setTargetScope('atletas')}
                   >
-                    Atletas Específicos
+                    Atletas específicos
                   </button>
                 </div>
 
@@ -587,17 +581,17 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                 {targetScope === 'atletas' && (
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
+                      <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
                         Selecione um ou mais atletas para este planejamento ({targetAthleteIds.length} selecionado{targetAthleteIds.length === 1 ? '' : 's'}):
                       </span>
                       {activeTeam && onQuickAddAthlete && (
                         <button
                           type="button"
                           className="btn btn-ghost btn-sm"
-                          style={{ padding: '2px 8px', fontSize: 11 }}
+                          style={{ padding: '2px 8px', fontSize: 12 }}
                           onClick={() => setShowQuickAthlete((v) => !v)}
                         >
-                          <Plus size={12} /> Novo Atleta Rápido
+                          <Plus size={12} /> Novo atleta rápido
                         </button>
                       )}
                     </div>
@@ -641,7 +635,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
 
                     {athletes.length === 0 ? (
                       <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
-                        Cadastre atletas na aba Equipe ou use "Novo Atleta Rápido" acima.
+                        Cadastre atletas em Equipe ou use "Novo atleta rápido" acima.
                       </span>
                     ) : (
                       <>
@@ -666,7 +660,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                             <span
                               style={{
                                 display: 'block',
-                                fontSize: 11,
+                                fontSize: 12,
                                 color: 'var(--ink-muted)',
                                 marginBottom: 4,
                               }}
@@ -701,7 +695,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
               {planType === 'competicao_alvo' && (
                 <>
                   <div className="field col-6">
-                    <label>Nome da Competição Alvo</label>
+                    <label>Nome da competição alvo</label>
                     <input
                       type="text"
                       className="input"
@@ -711,7 +705,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                     />
                   </div>
                   <div className="field col-6">
-                    <label>Data da Competição</label>
+                    <label>Data da competição</label>
                     <input
                       type="date"
                       className="input mono-num"
@@ -723,7 +717,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
               )}
 
               <div className="field col-4">
-                <label>Prova Alvo (opcional)</label>
+                <label>Prova alvo (opcional)</label>
                 <input
                   type="text"
                   className="input"
@@ -734,7 +728,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
               </div>
 
               <div className="field col-4">
-                <label>Tempo Alvo / Meta (opcional)</label>
+                <label>Tempo alvo / meta (opcional)</label>
                 <input
                   type="text"
                   className="input mono-num"
@@ -745,7 +739,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
               </div>
 
               <div className="field col-4">
-                <label>Objetivo Principal do Ciclo</label>
+                <label>Objetivo principal do ciclo</label>
                 <input
                   type="text"
                   className="input"
@@ -756,7 +750,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
               </div>
 
               <div className="field col-12">
-                <label>Estratégia & Observações do Planejamento</label>
+                <label>Estratégia & observações do planejamento</label>
                 <textarea
                   className="textarea"
                   value={notes}
@@ -770,9 +764,9 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
             <div className="periodization-builder">
               <div className="periodization-builder-head">
                 <div>
-                  <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>
+                  <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>
                     <Layers size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
-                    Periodização Detalhada ({phases.length} fases)
+                    Periodização ({phases.length} fases)
                   </h3>
                   <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
                     Divida o ciclo em mesociclos/fases com datas, foco, zonas alvo e sessões por semana.
@@ -784,18 +778,18 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                     className="btn btn-sm"
                     onClick={() => setPhases(buildSuggestedPhases(startDate, endDate))}
                   >
-                    <Sparkles size={13} /> Gerar Periodização Sugerida
+                    <Sparkles size={13} /> Gerar periodização sugerida
                   </button>
                   <button type="button" className="btn btn-sm" onClick={handleAddPhase}>
-                    <Plus size={13} /> Adicionar Fase
+                    <Plus size={13} /> Adicionar fase
                   </button>
                 </div>
               </div>
 
               {phases.length === 0 ? (
                 <div style={{ fontSize: 13, color: 'var(--ink-muted)', padding: '12px 0' }}>
-                  Nenhuma fase adicionada ainda. Clique em "Gerar Periodização Sugerida" ou
-                  "Adicionar Fase".
+                  Nenhuma fase adicionada ainda. Clique em "Gerar periodização sugerida" ou
+                  "Adicionar fase".
                 </div>
               ) : (
                 <div className="phases-editor-list">
@@ -866,7 +860,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                           />
                         </div>
                         <div className="field col-3">
-                          <label>Sessões / Semana</label>
+                          <label>Sessões / semana</label>
                           <input
                             type="number"
                             min={1}
@@ -894,7 +888,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                         </div>
 
                         <div className="field col-6">
-                          <label>Foco Técnico & Fisiológico</label>
+                          <label>Foco técnico & fisiológico</label>
                           <input
                             type="text"
                             className="input"
@@ -907,7 +901,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                         </div>
 
                         <div className="field col-6">
-                          <label>Zonas Alvo da Fase</label>
+                          <label>Zonas alvo da fase</label>
                           <div className="chip-row">
                             {catalog.zones.map((z) => {
                               const selected = phase.targetZones.includes(z.id);
@@ -926,7 +920,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                         </div>
 
                         <div className="field col-12">
-                          <label>Detalhamento / Microciclos / Testes</label>
+                          <label>Detalhamento / microciclos / testes</label>
                           <input
                             type="text"
                             className="input"
@@ -957,7 +951,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
               </button>
               <button type="submit" className="btn btn-primary">
                 <Check size={15} />
-                {editingPlanId ? 'Salvar Alterações' : 'Salvar Planejamento'}
+                {editingPlanId ? 'Salvar alterações' : 'Salvar planejamento'}
               </button>
             </div>
           </form>
@@ -979,21 +973,21 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
             className={typeFilter === 'competicao_alvo' ? 'active' : ''}
             onClick={() => setTypeFilter('competicao_alvo')}
           >
-            Competições Alvo
+            Competições alvo
           </button>
           <button
             type="button"
             className={typeFilter === 'tempo_alvo' ? 'active' : ''}
             onClick={() => setTypeFilter('tempo_alvo')}
           >
-            Tempos Alvo
+            Tempos alvo
           </button>
           <button
             type="button"
             className={typeFilter === 'objetivo_geral' ? 'active' : ''}
             onClick={() => setTypeFilter('objetivo_geral')}
           >
-            Objetivos Gerais
+            Objetivos gerais
           </button>
         </div>
       </div>
@@ -1005,14 +999,14 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
           style={{ textAlign: 'center', padding: '48px 24px' }}
         >
           <Target size={28} style={{ color: 'var(--ink-muted)', marginBottom: 8 }} />
-          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
+          <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>
             Nenhum planejamento cadastrado
           </div>
           <p style={{ margin: '0 0 16px 0', color: 'var(--ink-secondary)', fontSize: 13 }}>
             Crie um planejamento com competição alvo, tempo alvo de atleta e fases de periodização.
           </p>
           <button type="button" className="btn btn-primary" onClick={openNewForm}>
-            <Plus size={15} /> Criar Primeiro Planejamento
+            <Plus size={15} /> Criar primeiro planejamento
           </button>
         </div>
       ) : (
@@ -1036,7 +1030,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                         {PLAN_TYPE_LABELS[plan.planType].label}
                       </span>
                       {plan.targetScope === 'equipe' && (
-                        <span className="db-chip">Toda a Equipe</span>
+                        <span className="db-chip">Toda a equipe</span>
                       )}
                       {plan.targetScope === 'categoria' && plan.targetCategory && (
                         <span className="db-chip">Grupo: {plan.targetCategory}</span>
@@ -1090,7 +1084,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                       className="btn btn-primary btn-sm"
                       onClick={() => onCreateWorkoutFromPlan(plan)}
                     >
-                      <PlusSquare size={13} /> Criar Treino
+                      <PlusSquare size={13} /> Criar treino
                     </button>
                     <button
                       type="button"
@@ -1182,7 +1176,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                                 style={{ backgroundColor: PHASE_META[ph.phaseType].color }}
                               />
                               <strong style={{ fontSize: 13 }}>{ph.name}</strong>
-                              <span className="mono-num" style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
+                              <span className="mono-num" style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
                                 {formatDateBR(ph.startDate)} → {formatDateBR(ph.endDate)}
                               </span>
                               <span className="db-chip">{ph.weeklySessions}x/sem</span>
@@ -1205,7 +1199,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                           </div>
 
                           <div className="phase-detail-right">
-                            <span className="mono-num" style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
+                            <span className="mono-num" style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
                               {phaseWorkouts} {phaseWorkouts === 1 ? 'treino' : 'treinos'}
                             </span>
                             <button
@@ -1213,7 +1207,7 @@ export const PlanningManager: React.FC<PlanningManagerProps> = ({
                               className="btn btn-sm"
                               onClick={() => onCreateWorkoutFromPlan(plan, ph)}
                             >
-                              <Plus size={13} /> Treino nesta Fase
+                              <Plus size={13} /> Treino nesta fase
                             </button>
                           </div>
                         </div>

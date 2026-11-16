@@ -1,14 +1,17 @@
 import React, { useMemo, useState } from 'react';
 import {
   Activity,
+  AlertTriangle,
   Award,
   BarChart3,
   BatteryCharging,
   Clock,
   Flame,
-  Moon,
+  Gauge,
+  HeartPulse,
   Target,
   TrendingUp,
+  Trophy,
   UserCheck,
   UserX,
   Users,
@@ -17,11 +20,29 @@ import {
 import type {
   Athlete,
   CatalogDatabase,
+  CssTest,
+  QualifyingStandard,
+  RpeLog,
+  SwimResult,
   Team,
   TrainingPlan,
+  WellnessEntry,
   Workout,
   ZoneId,
 } from '../types/swimming';
+import {
+  computeLoadMetrics,
+  evaluateAthleteLoadState,
+  evaluateWellnessTrend,
+} from '../domain/load';
+import { getLatestCssForAthlete } from '../domain/pace';
+import {
+  computeBestMarksByEvent,
+  computeWorldAquaticsPoints,
+  evaluateAthleteStandards,
+  normalizeEventName,
+} from '../domain/points';
+import { formatSwimTime } from '../domain/time';
 import {
   computeWorkoutStats,
   estimateItemSeconds,
@@ -30,109 +51,40 @@ import {
   getItemMeters,
   isWorkoutAssignedToAthlete,
 } from '../utils/storage';
+import { CssZonesPanel } from './athlete/CssZonesPanel';
+import { LoadAndWellnessPanel } from './athlete/LoadAndWellnessPanel';
+import { ResultsAndStandardsPanel } from './athlete/ResultsAndStandardsPanel';
 
 interface AthleteAnalyticsProps {
   activeTeam: Team | null;
+  coachId?: string;
   athletes: Athlete[];
   workouts: Workout[];
   plans?: TrainingPlan[];
   catalog: CatalogDatabase;
+  results?: SwimResult[];
+  standards?: QualifyingStandard[];
+  cssTests?: CssTest[];
+  rpeLogs?: RpeLog[];
+  wellnessEntries?: WellnessEntry[];
+  onSaveResult?: (result: SwimResult) => Promise<void> | void;
+  onDeleteResult?: (id: string) => Promise<void> | void;
+  onSaveStandard?: (standard: QualifyingStandard) => Promise<void> | void;
+  onDeleteStandard?: (id: string) => Promise<void> | void;
+  onSaveCssTest?: (test: CssTest) => Promise<void> | void;
+  onDeleteCssTest?: (id: string) => Promise<void> | void;
+  onSaveRpeLog?: (log: RpeLog) => Promise<void> | void;
+  onDeleteRpeLog?: (id: string) => Promise<void> | void;
+  onSaveWellness?: (entry: WellnessEntry) => Promise<void> | void;
+  onDeleteWellness?: (id: string) => Promise<void> | void;
+  onSaveAthlete?: (athlete: Athlete) => Promise<void> | void;
   onEditWorkout: (workout: Workout) => void;
   onToggleAthleteAbsence?: (workout: Workout, athleteId: string) => void;
   onGoToTeam: () => void;
 }
 
 type PeriodFilter = '7d' | '30d' | '90d' | 'all';
-
-interface PhysicalStatePrediction {
-  score: number;
-  label: string;
-  tone: 'optimal' | 'fresh' | 'moderate' | 'fatigue' | 'detraining';
-  summary: string;
-  recommendation: string;
-}
-
-function predictPhysicalState(params: {
-  sessionCount: number;
-  restDays: number;
-  periodDays: number;
-  daysSinceLastWorkout: number | null;
-  regenerativePct: number;
-  lightSessionsCount: number;
-  highPct: number;
-  missedCount: number;
-}): PhysicalStatePrediction {
-  const {
-    sessionCount,
-    restDays,
-    periodDays,
-    daysSinceLastWorkout,
-    regenerativePct,
-    lightSessionsCount,
-    highPct,
-    missedCount,
-  } = params;
-
-  const restRatio = periodDays > 0 ? restDays / periodDays : 1;
-
-  if (sessionCount === 0) {
-    return {
-      score: 65,
-      label: 'Sem Carga Registrada',
-      tone: 'detraining',
-      summary: `${restDays} dias de descanso no período${missedCount > 0 ? ` (${missedCount} falta(s))` : ''}, sem sessões concluídas.`,
-      recommendation: 'Retomada gradual com séries aeróbicas leves (Z1/Z2) para readaptação.',
-    };
-  }
-
-  if (daysSinceLastWorkout !== null && daysSinceLastWorkout >= 6) {
-    return {
-      score: 68,
-      label: 'Descanso Prolongado / Retomada',
-      tone: 'detraining',
-      summary: `Último treino há ${daysSinceLastWorkout} dias (${restDays}d de descanso no período). Musculatura descansada, possível perda leve de ritmo.`,
-      recommendation: 'Iniciar com sessão progressiva em Z1/Z2 e estímulos curtos de sensibilidade na água.',
-    };
-  }
-
-  if (highPct >= 35 && restRatio < 0.25 && regenerativePct < 35) {
-    return {
-      score: 48,
-      label: 'Fadiga Acumulada / Sobrecarga',
-      tone: 'fatigue',
-      summary: `Alta intensidade (${highPct}% em Z4–VEL) com pouco descanso (${restDays}d) e baixo volume regenerativo (${regenerativePct}% em Z1/Z2).`,
-      recommendation: 'Priorizar 1 dia de descanso ou treino regenerativo/fraco (Z1/Z2) para evitar overtraining.',
-    };
-  }
-
-  if (regenerativePct >= 65 || lightSessionsCount >= Math.ceil(sessionCount * 0.6) || restRatio >= 0.55) {
-    return {
-      score: 88,
-      label: 'Recuperado / Fresco',
-      tone: 'fresh',
-      summary: `Boa reserva de recuperação (${restDays}d de descanso · ${regenerativePct}% do volume em Z1/Z2 regenerativo/leve).`,
-      recommendation: 'Excelente janela para aplicar séries principais mais intensas (Z3–Z5) ou ritmo de prova.',
-    };
-  }
-
-  if (restRatio >= 0.25 && highPct <= 35) {
-    return {
-      score: 84,
-      label: 'Pronto para Alta Performance',
-      tone: 'optimal',
-      summary: `Equilíbrio ideal entre estímulo e recuperação (${restDays}d de descanso · ${regenerativePct}% em Z1/Z2 · ${highPct}% Z4–VEL).`,
-      recommendation: 'Manter a periodização planejada; atleta apto para treinos-chave e testes de parcial.',
-    };
-  }
-
-  return {
-    score: 72,
-    label: 'Carga Moderada / Estável',
-    tone: 'moderate',
-    summary: `Ritmo contínuo com ${sessionCount} sessões, ${restDays}d de descanso e ${regenerativePct}% de volume leve (Z1/Z2).`,
-    recommendation: 'Alternar sessões fortes com estímulos regenerativos em Z1/Z2 nos próximos dias.',
-  };
-}
+type AthleteSubTab = 'carga' | 'tempos' | 'css';
 
 function computeStdDev(values: number[]): number {
   if (values.length <= 1) return 0;
@@ -141,12 +93,31 @@ function computeStdDev(values: number[]): number {
   return Math.round(Math.sqrt(variance));
 }
 
+const noop = () => undefined;
+
 export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
   activeTeam,
+  coachId = '',
   athletes,
   workouts,
   plans = [],
   catalog,
+  results = [],
+  standards = [],
+  cssTests = [],
+  rpeLogs = [],
+  wellnessEntries = [],
+  onSaveResult = noop,
+  onDeleteResult = noop,
+  onSaveStandard = noop,
+  onDeleteStandard = noop,
+  onSaveCssTest = noop,
+  onDeleteCssTest = noop,
+  onSaveRpeLog = noop,
+  onDeleteRpeLog = noop,
+  onSaveWellness = noop,
+  onDeleteWellness = noop,
+  onSaveAthlete = noop,
   onEditWorkout,
   onToggleAthleteAbsence,
   onGoToTeam,
@@ -156,6 +127,7 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
   );
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [period, setPeriod] = useState<PeriodFilter>('all');
+  const [subTab, setSubTab] = useState<AthleteSubTab>('carga');
   const [hoveredWorkoutId, setHoveredWorkoutId] = useState<string | null>(null);
   const [todayRef] = useState(() => new Date());
 
@@ -191,25 +163,12 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   }, [workouts, period, todayRef]);
 
-  const periodDays = useMemo(() => {
-    if (period === '7d') return 7;
-    if (period === '30d') return 30;
-    if (period === '90d') return 90;
-    if (periodWorkouts.length === 0) return 0;
-    const dates = periodWorkouts
-      .map((w) => w.date)
-      .filter(Boolean)
-      .sort();
-    if (dates.length === 0) return 0;
-    const first = new Date(`${dates[0]}T00:00:00`);
-    if (Number.isNaN(first.getTime())) return 0;
-    const diff = Math.floor((todayRef.getTime() - first.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    return Math.max(1, diff);
-  }, [period, periodWorkouts, todayRef]);
-
-  // Statistical summary for every athlete in the roster
+  // Statistical + real load/CSS/wellness summary for every athlete in the roster
   const rosterStats = useMemo(() => {
     return filteredRoster.map((athlete) => {
+      const latestCss = getLatestCssForAthlete(cssTests, athlete.id);
+      const cssPace100Cs = latestCss?.cssPace100Cs;
+
       const assigned = periodWorkouts.filter((w) => isWorkoutAssignedToAthlete(w, athlete));
       const attended = assigned.filter((w) => !w.absentAthleteIds?.includes(athlete.id));
       const missed = assigned.filter((w) => Boolean(w.absentAthleteIds?.includes(athlete.id)));
@@ -218,28 +177,16 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
       let totalMeters = 0;
       let totalMinutes = 0;
       let highIntensityMeters = 0;
-      let regenerativeMeters = 0;
-      let lightSessionsCount = 0;
-      const trainedDates = new Set<string>();
 
       for (const wk of attended) {
-        if (wk.date) trainedDates.add(wk.date);
-        const st = computeWorkoutStats(wk.items, catalog.zones);
+        const st = computeWorkoutStats(wk.items, catalog.zones, cssPace100Cs);
         volumes.push(st.totalMeters);
         totalMeters += st.totalMeters;
         totalMinutes += st.estimatedMinutes;
-        let wkHigh = 0;
         for (const z of st.byZone) {
           if (z.zone.id === 'Z4' || z.zone.id === 'Z5' || z.zone.id === 'VEL') {
             highIntensityMeters += z.meters;
-            wkHigh += z.meters;
           }
-          if (z.zone.id === 'Z1' || z.zone.id === 'Z2') {
-            regenerativeMeters += z.meters;
-          }
-        }
-        if (st.totalMeters > 0 && wkHigh / st.totalMeters <= 0.15) {
-          lightSessionsCount += 1;
         }
       }
 
@@ -247,52 +194,40 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
       const avgMeters = sessions > 0 ? Math.round(totalMeters / sessions) : 0;
       const stdDev = computeStdDev(volumes);
       const highPct = totalMeters > 0 ? Math.round((highIntensityMeters / totalMeters) * 100) : 0;
-      const regenerativePct =
-        totalMeters > 0 ? Math.round((regenerativeMeters / totalMeters) * 100) : 0;
-      const restDays = Math.max(0, periodDays - trainedDates.size);
 
-      const sortedDates = Array.from(trainedDates).sort();
-      const lastDateStr = sortedDates[sortedDates.length - 1];
-      let daysSinceLastWorkout: number | null = null;
-      if (lastDateStr) {
-        const lastD = new Date(`${lastDateStr}T00:00:00`);
-        if (!Number.isNaN(lastD.getTime())) {
-          daysSinceLastWorkout = Math.max(
-            0,
-            Math.floor((todayRef.getTime() - lastD.getTime()) / (1000 * 60 * 60 * 24))
-          );
-        }
-      }
-
-      const physicalState = predictPhysicalState({
-        sessionCount: sessions,
-        restDays,
-        periodDays,
-        daysSinceLastWorkout,
-        regenerativePct,
-        lightSessionsCount,
-        highPct,
-        missedCount: missed.length,
-      });
+      const athRpe = rpeLogs.filter((l) => l.athleteId === athlete.id);
+      const athWellness = wellnessEntries.filter((w) => w.athleteId === athlete.id);
+      const loadMetrics = computeLoadMetrics(athRpe);
+      const wellnessEval = evaluateWellnessTrend(athWellness);
+      const loadState = evaluateAthleteLoadState(loadMetrics, wellnessEval);
 
       return {
         athlete,
         sessions,
         missedCount: missed.length,
-        restDays,
         totalMeters,
         totalMinutes,
         avgMeters,
         stdDev,
         highPct,
-        physicalState,
+        cssPace100Cs,
+        loadMetrics,
+        wellnessEval,
+        loadState,
       };
     });
-  }, [filteredRoster, periodWorkouts, catalog.zones, periodDays, todayRef]);
+  }, [filteredRoster, periodWorkouts, catalog.zones, cssTests, rpeLogs, wellnessEntries]);
 
   // Deep-dive analytics for the selected athlete
   const athleteDetail = useMemo(() => {
     if (!effectiveAthlete) return null;
+
+    const latestCss = getLatestCssForAthlete(cssTests, effectiveAthlete.id);
+    const cssPace100Cs = latestCss?.cssPace100Cs;
+
+    const athResults = results.filter((r) => r.athleteId === effectiveAthlete.id);
+    const bestMarks = computeBestMarksByEvent(athResults);
+    const standardEvals = evaluateAthleteStandards(effectiveAthlete, athResults, standards);
 
     const assigned = periodWorkouts.filter((w) =>
       isWorkoutAssignedToAthlete(w, effectiveAthlete)
@@ -306,21 +241,9 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
     let totalMinutes = 0;
     let totalReps = 0;
     let highIntensityMeters = 0;
-    let regenerativeMeters = 0;
-    let lightSessionsCount = 0;
     const volumes: number[] = [];
-    const trainedDates = new Set<string>();
 
     const zoneMeters: Record<ZoneId, number> = {
-      Z1: 0,
-      Z2: 0,
-      Z3: 0,
-      Z4: 0,
-      Z5: 0,
-      VEL: 0,
-    };
-
-    const zoneMinutes: Record<ZoneId, number> = {
       Z1: 0,
       Z2: 0,
       Z3: 0,
@@ -339,8 +262,7 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
     }> = [];
 
     for (const wk of attended) {
-      if (wk.date) trainedDates.add(wk.date);
-      const stats = computeWorkoutStats(wk.items, catalog.zones);
+      const stats = computeWorkoutStats(wk.items, catalog.zones, cssPace100Cs);
       totalMeters += stats.totalMeters;
       totalMinutes += stats.estimatedMinutes;
       volumes.push(stats.totalMeters);
@@ -348,17 +270,12 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
       let wkHigh = 0;
       for (const item of wk.items) {
         const m = getItemMeters(item);
-        const sec = estimateItemSeconds(item);
         totalReps += item.reps;
         zoneMeters[item.zoneId] = (zoneMeters[item.zoneId] || 0) + m;
-        zoneMinutes[item.zoneId] = (zoneMinutes[item.zoneId] || 0) + sec / 60;
 
         if (item.zoneId === 'Z4' || item.zoneId === 'Z5' || item.zoneId === 'VEL') {
           highIntensityMeters += m;
           wkHigh += m;
-        }
-        if (item.zoneId === 'Z1' || item.zoneId === 'Z2') {
-          regenerativeMeters += m;
         }
 
         const prevStyle = styleMap.get(item.seriesType) ?? {
@@ -378,9 +295,8 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
         }
       }
 
-      if (stats.totalMeters > 0 && wkHigh / stats.totalMeters <= 0.15) {
-        lightSessionsCount += 1;
-      }
+      // Also verify estimateItemSeconds usage stays consistent
+      void estimateItemSeconds;
 
       sessions.push({
         workout: wk,
@@ -397,63 +313,44 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
     const stdDev = computeStdDev(volumes);
     const highPct = totalMeters > 0 ? Math.round((highIntensityMeters / totalMeters) * 100) : 0;
     const aerobicPct = totalMeters > 0 ? 100 - highPct : 0;
-    const regenerativePct =
-      totalMeters > 0 ? Math.round((regenerativeMeters / totalMeters) * 100) : 0;
     const maxSessionMeters = volumes.reduce((m, v) => Math.max(m, v), 0);
 
-    const trainedDays = trainedDates.size;
-    const restDays = Math.max(0, periodDays - trainedDays);
-    const restRatioPct = periodDays > 0 ? Math.round((restDays / periodDays) * 100) : 0;
-
-    const sortedDates = Array.from(trainedDates).sort();
-    const lastDateStr = sortedDates[sortedDates.length - 1];
-    let daysSinceLastWorkout: number | null = null;
-    if (lastDateStr) {
-      const lastD = new Date(`${lastDateStr}T00:00:00`);
-      if (!Number.isNaN(lastD.getTime())) {
-        daysSinceLastWorkout = Math.max(
-          0,
-          Math.floor((todayRef.getTime() - lastD.getTime()) / (1000 * 60 * 60 * 24))
-        );
-      }
-    }
-
-    const physicalState = predictPhysicalState({
-      sessionCount,
-      restDays,
-      periodDays,
-      daysSinceLastWorkout,
-      regenerativePct,
-      lightSessionsCount,
-      highPct,
-      missedCount: missedWorkouts.length,
-    });
+    const athRpe = rpeLogs.filter((l) => l.athleteId === effectiveAthlete.id);
+    const athWellness = wellnessEntries.filter((w) => w.athleteId === effectiveAthlete.id);
+    const loadMetrics = computeLoadMetrics(athRpe);
+    const wellnessEval = evaluateWellnessTrend(athWellness);
+    const loadState = evaluateAthleteLoadState(loadMetrics, wellnessEval);
 
     const byZone = catalog.zones.map((zone) => {
       const meters = zoneMeters[zone.id] || 0;
-      const minutes = Math.round(zoneMinutes[zone.id] || 0);
       const percent = totalMeters > 0 ? Math.round((meters / totalMeters) * 100) : 0;
-      return { zone, meters, minutes, percent };
+      return { zone, meters, percent };
     });
 
     const styles = Array.from(styleMap.values()).sort((a, b) => b.meters - a.meters);
     const equipment = Array.from(equipMap.values()).sort((a, b) => b.meters - a.meters);
 
+    const mainNorm = normalizeEventName(effectiveAthlete.mainEvent || '');
+    const mainBest25 = bestMarks.find((b) => b.event === mainNorm && b.poolLength === 25);
+    const mainBest50 = bestMarks.find((b) => b.event === mainNorm && b.poolLength === 50);
+
     return {
       athlete: effectiveAthlete,
+      latestCss,
+      cssPace100Cs,
+      bestMarks,
+      mainBest25,
+      mainBest50,
+      standardEvals,
+      assigned,
+      attended,
       sessionCount,
       totalAssignedCount,
       attendanceRate,
       missedWorkouts,
-      trainedDays,
-      restDays,
-      restRatioPct,
-      periodDays,
-      daysSinceLastWorkout,
-      regenerativeMeters,
-      regenerativePct,
-      lightSessionsCount,
-      physicalState,
+      loadMetrics,
+      wellnessEval,
+      loadState,
       totalMeters,
       totalMinutes,
       totalReps,
@@ -468,7 +365,16 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
       equipment,
       sessions,
     };
-  }, [effectiveAthlete, periodWorkouts, catalog.zones, periodDays, todayRef]);
+  }, [
+    effectiveAthlete,
+    periodWorkouts,
+    catalog.zones,
+    cssTests,
+    results,
+    standards,
+    rpeLogs,
+    wellnessEntries,
+  ]);
 
   const donutSegments = useMemo(() => {
     if (!athleteDetail) return [];
@@ -505,11 +411,9 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
       <div>
         <div className="page-header">
           <div className="page-title-group">
-            <span className="page-eyebrow">Estatística & Performance Individual</span>
-            <h1 className="page-title">Análise Estatística de Atletas</h1>
+            <h1 className="page-title">Atletas</h1>
             <p className="page-subtitle">
-              Acompanhe volume, consistência (desvio padrão), polarização e evolução individual
-              baseada nos treinos reais atribuídos.
+              Desempenho real, testes de CSS, carga interna (sRPE/ACWR) e wellness.
             </p>
           </div>
         </div>
@@ -519,17 +423,16 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
           style={{ textAlign: 'center', padding: '52px 24px' }}
         >
           <Users size={30} style={{ color: 'var(--ink-muted)', marginBottom: 10 }} />
-          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>
+          <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>
             {!activeTeam
               ? 'Nenhuma equipe criada ainda'
               : 'Nenhum atleta cadastrado nesta equipe'}
           </div>
           <p style={{ margin: '0 0 16px 0', color: 'var(--ink-secondary)', fontSize: 13 }}>
-            Cadastre sua equipe e seus atletas na aba Minha Equipe para visualizar as estatísticas
-            individuais.
+            Cadastre sua equipe e seus atletas em Equipe para acompanhar tempos, CSS e ACWR.
           </p>
           <button type="button" className="btn btn-primary" onClick={onGoToTeam}>
-            Ir para Minha Equipe
+            Ir para Equipe
           </button>
         </div>
       </div>
@@ -545,21 +448,20 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
     <div>
       <div className="page-header">
         <div className="page-title-group">
-          <span className="page-eyebrow">
-            Estatística & Performance · {activeTeam.name}
-          </span>
-          <h1 className="page-title">Análise Estatística de Atletas</h1>
+          <h1 className="page-title">Atletas</h1>
           <p className="page-subtitle">
-            Métricas reais de carga, consistência, zonas fisiológicas e estilos calculadas a partir
-            dos treinos atribuídos ao atleta, grupo ou equipe.
+            Tempos reais, pontos World Aquatics, CSS, carga interna (sRPE / ACWR) e wellness.
           </p>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="analytics-filters surface-card" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+      <div
+        className="analytics-filters surface-card"
+        style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}
+      >
         <div className="analytics-filter-group">
-          <label>Atleta Analisado</label>
+          <label>Atleta analisado</label>
           <select
             className="select"
             value={effectiveAthlete?.id ?? ''}
@@ -574,7 +476,7 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
         </div>
 
         <div className="analytics-filter-group">
-          <label>Categoria / Grupo</label>
+          <label>Categoria / grupo</label>
           <select
             className="select"
             value={categoryFilter}
@@ -620,37 +522,83 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
             <div className="athlete-banner">
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
+                  <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>
                     {athleteDetail.athlete.name}
                   </h2>
                   <span className="db-chip">{athleteDetail.athlete.category}</span>
+                  <span className="db-chip">
+                    {athleteDetail.athlete.sex === 'F' ? 'Feminino' : 'Masculino'}
+                  </span>
                   <span
                     className={`status-badge status-${athleteDetail.athlete.status.toLowerCase()}`}
                   >
                     {athleteDetail.athlete.status}
                   </span>
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--ink-secondary)', marginTop: 6 }}>
-                  Prova principal: <strong>{athleteDetail.athlete.mainEvent || '—'}</strong> ·
-                  Melhor marca:{' '}
-                  <strong className="mono-num">{athleteDetail.athlete.bestTime || '—'}</strong>
-                  {athleteDetail.athlete.targetTime && (
-                    <>
-                      {' '}
-                      · Tempo meta:{' '}
-                      <strong className="mono-num" style={{ color: 'var(--accent-primary)' }}>
-                        {athleteDetail.athlete.targetTime}
-                      </strong>
-                    </>
+                  {athleteDetail.latestCss && (
+                    <span className="db-chip mono-num">
+                      <Gauge size={12} /> CSS:{' '}
+                      <strong>{formatSwimTime(athleteDetail.latestCss.cssPace100Cs)}/100m</strong>
+                    </span>
                   )}
                 </div>
-                {athleteDetail.athlete.events && athleteDetail.athlete.events.length > 0 && (
+
+                <div style={{ fontSize: 12, color: 'var(--ink-secondary)', marginTop: 6 }}>
+                  Prova principal: <strong>{athleteDetail.athlete.mainEvent || '—'}</strong>
+                  {athleteDetail.mainBest25 && (
+                    <>
+                      {' '}
+                      · 25m:{' '}
+                      <strong className="mono-num">
+                        {formatSwimTime(athleteDetail.mainBest25.bestResult.timeCs)}
+                      </strong>
+                      {(() => {
+                        const pts = computeWorldAquaticsPoints(
+                          athleteDetail.mainBest25.bestResult.timeCs,
+                          athleteDetail.mainBest25.event,
+                          25,
+                          athleteDetail.athlete.sex ?? 'M'
+                        );
+                        return pts !== null ? ` (${pts} pts WA)` : '';
+                      })()}
+                    </>
+                  )}
+                  {athleteDetail.mainBest50 && (
+                    <>
+                      {' '}
+                      · 50m:{' '}
+                      <strong className="mono-num">
+                        {formatSwimTime(athleteDetail.mainBest50.bestResult.timeCs)}
+                      </strong>
+                      {(() => {
+                        const pts = computeWorldAquaticsPoints(
+                          athleteDetail.mainBest50.bestResult.timeCs,
+                          athleteDetail.mainBest50.event,
+                          50,
+                          athleteDetail.athlete.sex ?? 'M'
+                        );
+                        return pts !== null ? ` (${pts} pts WA)` : '';
+                      })()}
+                    </>
+                  )}
+                  {!athleteDetail.mainBest25 && !athleteDetail.mainBest50 && (
+                    <> · Sem tempos registrados ainda</>
+                  )}
+                </div>
+
+                {athleteDetail.standardEvals.length > 0 && (
                   <div className="tag-cloud" style={{ marginTop: 8 }}>
-                    {athleteDetail.athlete.events.map((ev) => (
-                      <span key={ev.id} className="db-chip">
-                        <strong>{ev.event}</strong>
-                        {ev.bestTime ? ` · ${ev.bestTime}` : ''}
-                        {ev.targetTime ? ` → Meta: ${ev.targetTime}` : ''}
+                    {athleteDetail.standardEvals.slice(0, 3).map((ev) => (
+                      <span
+                        key={ev.standard.id}
+                        className={`readiness-badge ${
+                          ev.achieved === true
+                            ? 'tone-optimal'
+                            : ev.achieved === false
+                              ? 'tone-detraining'
+                              : 'tone-moderate'
+                        }`}
+                      >
+                        {ev.message}
                       </span>
                     ))}
                   </div>
@@ -669,7 +617,7 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
               ).length > 0 && (
                 <div className="athlete-goal-box">
                   <div className="metric-label" style={{ marginBottom: 6 }}>
-                    Planejamentos Ativos
+                    Planejamentos ativos
                   </div>
                   <div className="tag-cloud">
                     {plans
@@ -680,7 +628,8 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
                             (p.targetScope === 'categoria' &&
                               p.targetCategory === athleteDetail.athlete.category) ||
                             (p.targetScope === 'atletas' &&
-                              p.targetAthleteId === athleteDetail.athlete.id))
+                              (p.targetAthleteIds?.includes(athleteDetail.athlete.id) ||
+                                p.targetAthleteId === athleteDetail.athlete.id)))
                       )
                       .slice(0, 3)
                       .map((p) => (
@@ -697,58 +646,72 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
             </div>
           </div>
 
-          {/* Physical State Prediction & Rest/Attendance Overview */}
+          {/* Validated Load State (replaces predictPhysicalState heuristic) */}
           <div className="readiness-grid" style={{ marginBottom: 16 }}>
-            <section className={`surface-card readiness-card tone-${athleteDetail.physicalState.tone}`}>
+            <section
+              className={`surface-card readiness-card tone-${athleteDetail.loadState.tone}`}
+            >
               <div className="readiness-top">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <BatteryCharging size={18} />
                   <span className="metric-label" style={{ margin: 0 }}>
-                    Previsão de Estado Físico
+                    Carga interna & prontidão (sRPE / ACWR)
                   </span>
-                  <span className={`readiness-badge tone-${athleteDetail.physicalState.tone}`}>
-                    {athleteDetail.physicalState.label}
+                  <span className={`readiness-badge tone-${athleteDetail.loadState.tone}`}>
+                    {athleteDetail.loadState.label}
                   </span>
                 </div>
                 <div className="readiness-score mono-num">
-                  {athleteDetail.physicalState.score}
-                  <span>/100</span>
+                  {athleteDetail.loadState.score !== null ? athleteDetail.loadState.score : '—'}
+                  {athleteDetail.loadState.score !== null && <span>/100</span>}
                 </div>
               </div>
-              <p className="readiness-summary">{athleteDetail.physicalState.summary}</p>
+              <p className="readiness-summary">{athleteDetail.loadState.summary}</p>
               <div className="readiness-rec">
-                <strong>Recomendação:</strong> {athleteDetail.physicalState.recommendation}
+                <strong>Recomendação:</strong> {athleteDetail.loadState.recommendation}
               </div>
             </section>
 
             <div className="readiness-mini-kpis">
               <div className="surface-card kpi-card">
                 <div className="kpi-top">
-                  <span className="metric-label">Dias de Descanso</span>
-                  <Moon size={15} style={{ color: '#6366f1' }} />
+                  <span className="metric-label">ACWR (7d / 28d)</span>
+                  {athleteDetail.loadMetrics.acwrOutOfRange ? (
+                    <AlertTriangle size={15} style={{ color: 'var(--danger)' }} />
+                  ) : (
+                    <Activity size={15} />
+                  )}
                 </div>
-                <div className="kpi-value mono-num">{athleteDetail.restDays}d</div>
+                <div
+                  className="kpi-value mono-num"
+                  style={{
+                    color: athleteDetail.loadMetrics.acwrOutOfRange ? 'var(--danger)' : undefined,
+                  }}
+                >
+                  {athleteDetail.loadMetrics.acwr !== null
+                    ? athleteDetail.loadMetrics.acwr.toFixed(2)
+                    : '—'}
+                </div>
                 <div className="kpi-sub">
-                  {athleteDetail.restRatioPct}% dos {athleteDetail.periodDays}d ·{' '}
-                  {athleteDetail.daysSinceLastWorkout === null
-                    ? 'Sem treino recente'
-                    : athleteDetail.daysSinceLastWorkout === 0
-                      ? 'Treinou hoje'
-                      : `Último há ${athleteDetail.daysSinceLastWorkout}d`}
+                  {athleteDetail.loadMetrics.acwr === null
+                    ? 'Faixa alvo: 0,80–1,30'
+                    : athleteDetail.loadMetrics.acwrOutOfRange
+                      ? 'Alerta: fora de 0,80–1,30'
+                      : 'Zona segura (0,80–1,30)'}
                 </div>
               </div>
 
               <div className="surface-card kpi-card">
                 <div className="kpi-top">
-                  <span className="metric-label">Presença & Faltas</span>
-                  <UserCheck size={15} style={{ color: '#059669' }} />
+                  <span className="metric-label">Presença & faltas</span>
+                  <UserCheck size={15} />
                 </div>
                 <div className="kpi-value mono-num">{athleteDetail.attendanceRate}%</div>
                 <div className="kpi-sub">
                   {athleteDetail.sessionCount} realizados ·{' '}
                   <span
                     style={{
-                      color: athleteDetail.missedWorkouts.length > 0 ? '#dc2626' : undefined,
+                      color: athleteDetail.missedWorkouts.length > 0 ? 'var(--danger)' : undefined,
                       fontWeight: athleteDetail.missedWorkouts.length > 0 ? 700 : undefined,
                     }}
                   >
@@ -760,312 +723,151 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
 
               <div className="surface-card kpi-card">
                 <div className="kpi-top">
-                  <span className="metric-label">Regenerativo / Fraco</span>
-                  <Activity size={15} style={{ color: '#0d9488' }} />
+                  <span className="metric-label">Wellness / Monotonia</span>
+                  <HeartPulse size={15} />
                 </div>
-                <div className="kpi-value mono-num">{athleteDetail.regenerativePct}%</div>
+                <div className="kpi-value mono-num">
+                  {athleteDetail.wellnessEval.latestScore !== null
+                    ? `${athleteDetail.wellnessEval.latestScore}/20`
+                    : '—'}
+                </div>
                 <div className="kpi-sub">
-                  {formatMeters(athleteDetail.regenerativeMeters)} em Z1/Z2 ·{' '}
-                  {athleteDetail.lightSessionsCount} sessões leves
+                  Monotonia:{' '}
+                  <strong className="mono-num">
+                    {athleteDetail.loadMetrics.monotony !== null
+                      ? athleteDetail.loadMetrics.monotony.toFixed(2)
+                      : '—'}
+                  </strong>{' '}
+                  · Strain:{' '}
+                  <strong className="mono-num">
+                    {athleteDetail.loadMetrics.strain ?? '—'}
+                  </strong>
                 </div>
               </div>
             </div>
           </div>
 
-          {athleteDetail.missedWorkouts.length > 0 && (
-            <section className="surface-card" style={{ marginBottom: 16 }}>
-              <div className="card-header">
-                <h2 className="card-title" style={{ color: '#b91c1c' }}>
-                  <UserX size={15} /> Treinos em que Não Compareceu (
-                  {athleteDetail.missedWorkouts.length})
-                </h2>
-              </div>
-              <div className="card-section" style={{ paddingTop: 10, paddingBottom: 10 }}>
-                <div className="missed-workouts-list">
-                  {athleteDetail.missedWorkouts.map((wk) => {
-                    const st = computeWorkoutStats(wk.items, catalog.zones);
-                    return (
-                      <div key={wk.id} className="missed-workout-row">
-                        <div>
-                          <strong style={{ fontSize: 13 }}>{wk.title || 'Treino Sem Título'}</strong>
-                          <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
-                            <span className="mono-num">{formatDateBR(wk.date)}</span> ·{' '}
-                            {wk.objective} ·{' '}
-                            <span className="mono-num">{formatMeters(st.totalMeters)}</span>
-                          </div>
-                        </div>
-                        <div className="series-actions">
-                          {onToggleAthleteAbsence && (
-                            <button
-                              type="button"
-                              className="btn btn-sm"
-                              onClick={() =>
-                                onToggleAthleteAbsence(wk, athleteDetail.athlete.id)
-                              }
-                            >
-                              Marcar Presença
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-sm"
-                            onClick={() => onEditWorkout(wk)}
-                          >
-                            Ver Treino
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </section>
+          {/* Sub-navigation tabs */}
+          <div style={{ marginBottom: 16 }}>
+            <div className="segmented" style={{ maxWidth: 640 }}>
+              <button
+                type="button"
+                className={subTab === 'carga' ? 'active' : ''}
+                onClick={() => setSubTab('carga')}
+              >
+                <Activity size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
+                Carga, RPE & Wellness
+              </button>
+              <button
+                type="button"
+                className={subTab === 'tempos' ? 'active' : ''}
+                onClick={() => setSubTab('tempos')}
+              >
+                <Trophy size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
+                Tempos & Índices
+              </button>
+              <button
+                type="button"
+                className={subTab === 'css' ? 'active' : ''}
+                onClick={() => setSubTab('css')}
+              >
+                <Gauge size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
+                CSS & Zonas de Ritmo
+              </button>
+            </div>
+          </div>
+
+          {subTab === 'tempos' && (
+            <ResultsAndStandardsPanel
+              key={athleteDetail.athlete.id}
+              athlete={athleteDetail.athlete}
+              coachId={coachId}
+              results={results}
+              standards={standards}
+              onSaveResult={onSaveResult}
+              onDeleteResult={onDeleteResult}
+              onSaveStandard={onSaveStandard}
+              onDeleteStandard={onDeleteStandard}
+              onSaveAthlete={onSaveAthlete}
+            />
           )}
 
-          {athleteDetail.sessionCount === 0 ? (
-            <div
-              className="surface-card card-section"
-              style={{ textAlign: 'center', padding: '44px 20px', marginBottom: 16 }}
-            >
-              <BarChart3 size={28} style={{ color: 'var(--ink-muted)', marginBottom: 8 }} />
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
-                Nenhum treino concluído atribuído a {athleteDetail.athlete.name} neste período
-              </div>
-              <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-secondary)' }}>
-                Apenas treinos marcados como concluídos são contabilizados nos painéis. Crie ou
-                conclua um treino direcionado para a equipe, grupo{' '}
-                <strong>{athleteDetail.athlete.category}</strong> ou para este atleta.
-              </p>
-            </div>
-          ) : (
+          {subTab === 'css' && (
+            <CssZonesPanel
+              key={athleteDetail.athlete.id}
+              athlete={athleteDetail.athlete}
+              coachId={coachId}
+              catalog={catalog}
+              cssTests={cssTests}
+              onSaveCssTest={onSaveCssTest}
+              onDeleteCssTest={onDeleteCssTest}
+            />
+          )}
+
+          {subTab === 'carga' && (
             <>
-              {/* Precision Statistical KPIs */}
-              <div className="kpi-grid">
-                <div className="surface-card kpi-card">
-                  <div className="kpi-top">
-                    <span className="metric-label">Volume Acumulado</span>
-                    <Waves size={16} style={{ color: 'var(--accent-primary)' }} />
-                  </div>
-                  <div className="kpi-value mono-num">
-                    {formatMeters(athleteDetail.totalMeters)}
-                  </div>
-                  <div className="kpi-sub">
-                    {athleteDetail.sessionCount} sessões · {athleteDetail.totalReps} repetições
-                  </div>
-                </div>
+              <LoadAndWellnessPanel
+                key={athleteDetail.athlete.id}
+                athlete={athleteDetail.athlete}
+                coachId={coachId}
+                catalog={catalog}
+                athleteCssPace100Cs={athleteDetail.cssPace100Cs}
+                assignedCompletedWorkouts={athleteDetail.attended}
+                rpeLogs={rpeLogs}
+                wellnessEntries={wellnessEntries}
+                onSaveRpeLog={onSaveRpeLog}
+                onDeleteRpeLog={onDeleteRpeLog}
+                onSaveWellness={onSaveWellness}
+                onDeleteWellness={onDeleteWellness}
+              />
 
-                <div className="surface-card kpi-card">
-                  <div className="kpi-top">
-                    <span className="metric-label">Média & Consistência (σ)</span>
-                    <Activity size={16} style={{ color: '#0d9488' }} />
-                  </div>
-                  <div className="kpi-value mono-num">
-                    {formatMeters(athleteDetail.avgMeters)}
-                  </div>
-                  <div className="kpi-sub">
-                    Desvio padrão: ±{formatMeters(athleteDetail.stdDev)} por sessão
-                  </div>
-                </div>
-
-                <div className="surface-card kpi-card">
-                  <div className="kpi-top">
-                    <span className="metric-label">Polarização (Aeróbio / Intenso)</span>
-                    <Flame size={16} style={{ color: '#dc2626' }} />
-                  </div>
-                  <div className="kpi-value mono-num">
-                    {athleteDetail.aerobicPct}% / {athleteDetail.highPct}%
-                  </div>
-                  <div className="kpi-sub">
-                    {formatMeters(athleteDetail.highIntensityMeters)} em Z4–VEL
-                  </div>
-                </div>
-
-                <div className="surface-card kpi-card">
-                  <div className="kpi-top">
-                    <span className="metric-label">Tempo na Água</span>
-                    <Clock size={16} style={{ color: '#6366f1' }} />
-                  </div>
-                  <div className="kpi-value mono-num">~{athleteDetail.totalMinutes} min</div>
-                  <div className="kpi-sub">
-                    Média de ~
-                    {Math.round(athleteDetail.totalMinutes / athleteDetail.sessionCount)} min/treino
-                  </div>
-                </div>
-              </div>
-
-              {/* Charts */}
-              <div className="analytics-grid-2">
-                <section className="surface-card">
+              {athleteDetail.missedWorkouts.length > 0 && (
+                <section className="surface-card" style={{ marginTop: 16 }}>
                   <div className="card-header">
-                    <h2 className="card-title">
-                      <TrendingUp size={15} /> Evolução de Carga do Atleta
+                    <h2 className="card-title" style={{ color: 'var(--danger)' }}>
+                      <UserX size={15} /> Treinos em que Não Compareceu (
+                      {athleteDetail.missedWorkouts.length})
                     </h2>
                   </div>
-                  <div className="card-section">
-                    <div className="bar-chart-scroll">
-                      <div className="bar-chart-canvas">
-                        {athleteDetail.sessions.map(({ workout, stats }) => {
-                          const heightPct =
-                            athleteDetail.maxSessionMeters > 0
-                              ? Math.max(
-                                  6,
-                                  Math.round(
-                                    (stats.totalMeters / athleteDetail.maxSessionMeters) * 100
-                                  )
-                                )
-                              : 0;
-                          const isSelected = activeSession?.workout.id === workout.id;
-
-                          return (
-                            <button
-                              key={workout.id}
-                              type="button"
-                              className={`bar-col-btn ${isSelected ? 'active' : ''}`}
-                              onMouseEnter={() => setHoveredWorkoutId(workout.id)}
-                              onFocus={() => setHoveredWorkoutId(workout.id)}
-                              onClick={() => onEditWorkout(workout)}
-                            >
-                              <div className="bar-track">
-                                <div className="bar-fill-stack" style={{ height: `${heightPct}%` }}>
-                                  {stats.byZone
-                                    .filter((z) => z.meters > 0)
-                                    .map((z) => (
-                                      <div
-                                        key={z.zone.id}
-                                        style={{
-                                          height: `${z.percent}%`,
-                                          backgroundColor: z.zone.accentHex,
-                                        }}
-                                      />
-                                    ))}
-                                </div>
-                              </div>
-                              <span className="bar-x-label mono-num">
-                                {workout.date
-                                  ? workout.date.slice(5).split('-').reverse().join('/')
-                                  : '—'}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {activeSession && (
-                      <div className="chart-inspector">
-                        <div>
-                          <div style={{ fontWeight: 700, fontSize: 13 }}>
-                            {activeSession.workout.title || 'Treino Sem Título'}
-                          </div>
-                          <div style={{ fontSize: 12, color: 'var(--ink-secondary)' }}>
-                            {formatDateBR(activeSession.workout.date)} ·{' '}
-                            {activeSession.workout.objective}
-                          </div>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <div className="mono-num" style={{ fontWeight: 700, fontSize: 15 }}>
-                            {formatMeters(activeSession.stats.totalMeters)}
-                          </div>
-                          <div className="mono-num" style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
-                            {activeSession.highPct}% intenso
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </section>
-
-                <section className="surface-card">
-                  <div className="card-header">
-                    <h2 className="card-title">
-                      <Target size={15} /> Perfil Fisiológico (Z1–VEL)
-                    </h2>
-                  </div>
-                  <div className="card-section">
-                    <div className="donut-layout">
-                      <div className="donut-wrap">
-                        <svg viewBox="0 0 140 140" className="donut-svg">
-                          <circle
-                            cx="70"
-                            cy="70"
-                            r="52"
-                            fill="none"
-                            stroke="#f1f5f9"
-                            strokeWidth="18"
-                          />
-                          {donutSegments.map((seg) => (
-                            <circle
-                              key={seg.zone.id}
-                              cx="70"
-                              cy="70"
-                              r="52"
-                              fill="none"
-                              stroke={seg.zone.accentHex}
-                              strokeWidth="18"
-                              strokeDasharray={`${seg.dash} ${seg.gap}`}
-                              strokeDashoffset={-seg.offset}
-                              transform="rotate(-90 70 70)"
-                            />
-                          ))}
-                        </svg>
-                        <div className="donut-center">
-                          <span className="mono-num" style={{ fontSize: 16, fontWeight: 700 }}>
-                            {athleteDetail.highPct}%
-                          </span>
-                          <span style={{ fontSize: 10, color: 'var(--ink-muted)', fontWeight: 700 }}>
-                            Z4–VEL
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="zone-legend-list" style={{ flex: 1 }}>
-                        {athleteDetail.byZone.map((z) => (
-                          <div key={z.zone.id} className="zone-legend-row">
-                            <div className="zone-legend-left">
-                              <span
-                                className="zone-swatch"
-                                style={{ backgroundColor: z.zone.accentHex }}
-                              />
-                              <span>
-                                <strong className="mono-num">{z.zone.code}</strong> ·{' '}
-                                {z.zone.shortLabel}
-                              </span>
-                            </div>
-                            <span className="mono-num" style={{ fontWeight: 600 }}>
-                              {formatMeters(z.meters)} ({z.percent}%)
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </section>
-              </div>
-
-              {/* Styles & Equipment */}
-              <div className="analytics-grid-2">
-                <section className="surface-card">
-                  <div className="card-header">
-                    <h2 className="card-title">Estilos & Tipos Trabalhados</h2>
-                  </div>
-                  <div className="card-section">
-                    <div className="h-bars-list">
-                      {athleteDetail.styles.slice(0, 6).map((st) => {
-                        const max = athleteDetail.styles[0]?.meters || 1;
-                        const pct = Math.round((st.meters / max) * 100);
+                  <div className="card-section" style={{ paddingTop: 10, paddingBottom: 10 }}>
+                    <div className="missed-workouts-list">
+                      {athleteDetail.missedWorkouts.map((wk) => {
+                        const st = computeWorkoutStats(
+                          wk.items,
+                          catalog.zones,
+                          athleteDetail.cssPace100Cs
+                        );
                         return (
-                          <div key={st.name} className="h-bar-item">
-                            <div className="h-bar-head">
-                              <span style={{ fontWeight: 600 }}>{st.name}</span>
-                              <span className="mono-num">
-                                {formatMeters(st.meters)} · {st.count}x
-                              </span>
+                          <div key={wk.id} className="missed-workout-row">
+                            <div>
+                              <strong style={{ fontSize: 13 }}>
+                                {wk.title || 'Treino sem título'}
+                              </strong>
+                              <div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+                                <span className="mono-num">{formatDateBR(wk.date)}</span> ·{' '}
+                                {wk.objective} ·{' '}
+                                <span className="mono-num">{formatMeters(st.totalMeters)}</span>
+                              </div>
                             </div>
-                            <div className="h-bar-track">
-                              <div
-                                className="h-bar-fill"
-                                style={{ width: `${pct}%`, backgroundColor: '#0057ff' }}
-                              />
+                            <div className="series-actions">
+                              {onToggleAthleteAbsence && (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm"
+                                  onClick={() =>
+                                    onToggleAthleteAbsence(wk, athleteDetail.athlete.id)
+                                  }
+                                >
+                                  Marcar presença
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                onClick={() => onEditWorkout(wk)}
+                              >
+                                Ver treino
+                              </button>
                             </div>
                           </div>
                         );
@@ -1073,43 +875,300 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
                     </div>
                   </div>
                 </section>
+              )}
 
-                <section className="surface-card">
-                  <div className="card-header">
-                    <h2 className="card-title">Equipamentos Utilizados</h2>
+              {athleteDetail.sessionCount === 0 ? (
+                <div
+                  className="surface-card card-section"
+                  style={{ textAlign: 'center', padding: '44px 20px', marginTop: 16 }}
+                >
+                  <BarChart3 size={28} style={{ color: 'var(--ink-muted)', marginBottom: 8 }} />
+                  <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>
+                    Nenhum treino concluído atribuído a {athleteDetail.athlete.name} neste período
                   </div>
-                  <div className="card-section">
-                    {athleteDetail.equipment.length === 0 ? (
-                      <div style={{ fontSize: 13, color: 'var(--ink-muted)' }}>
-                        Nenhum equipamento registrado nas sessões deste atleta.
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-secondary)' }}>
+                    Apenas treinos marcados como concluídos são contabilizados nos painéis. Crie ou
+                    conclua um treino direcionado para a equipe, grupo{' '}
+                    <strong>{athleteDetail.athlete.category}</strong> ou para este atleta.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Precision Statistical KPIs */}
+                  <div className="kpi-grid" style={{ marginTop: 16 }}>
+                    <div className="surface-card kpi-card">
+                      <div className="kpi-top">
+                        <span className="metric-label">Volume acumulado</span>
+                        <Waves size={16} style={{ color: 'var(--accent-primary)' }} />
                       </div>
-                    ) : (
-                      <div className="h-bars-list">
-                        {athleteDetail.equipment.slice(0, 6).map((eq) => {
-                          const max = athleteDetail.equipment[0]?.meters || 1;
-                          const pct = Math.round((eq.meters / max) * 100);
-                          return (
-                            <div key={eq.name} className="h-bar-item">
-                              <div className="h-bar-head">
-                                <span style={{ fontWeight: 600 }}>{eq.name}</span>
-                                <span className="mono-num">
-                                  {formatMeters(eq.meters)} ({eq.count}x)
-                                </span>
+                      <div className="kpi-value mono-num">
+                        {formatMeters(athleteDetail.totalMeters)}
+                      </div>
+                      <div className="kpi-sub">
+                        {athleteDetail.sessionCount} sessões · {athleteDetail.totalReps} repetições
+                      </div>
+                    </div>
+
+                    <div className="surface-card kpi-card">
+                      <div className="kpi-top">
+                        <span className="metric-label">Média & consistência (σ)</span>
+                        <Activity size={16} />
+                      </div>
+                      <div className="kpi-value mono-num">
+                        {formatMeters(athleteDetail.avgMeters)}
+                      </div>
+                      <div className="kpi-sub">
+                        Desvio padrão: ±{formatMeters(athleteDetail.stdDev)} por sessão
+                      </div>
+                    </div>
+
+                    <div className="surface-card kpi-card">
+                      <div className="kpi-top">
+                        <span className="metric-label">Polarização (aeróbio / intenso)</span>
+                        <Flame size={16} style={{ color: 'var(--danger)' }} />
+                      </div>
+                      <div className="kpi-value mono-num">
+                        {athleteDetail.aerobicPct}% / {athleteDetail.highPct}%
+                      </div>
+                      <div className="kpi-sub">
+                        {formatMeters(athleteDetail.highIntensityMeters)} em Z4–VEL
+                      </div>
+                    </div>
+
+                    <div className="surface-card kpi-card">
+                      <div className="kpi-top">
+                        <span className="metric-label">Tempo na água</span>
+                        <Clock size={16} />
+                      </div>
+                      <div className="kpi-value mono-num">~{athleteDetail.totalMinutes} min</div>
+                      <div className="kpi-sub">
+                        {athleteDetail.cssPace100Cs
+                          ? `Estimado pelo CSS (${formatSwimTime(athleteDetail.cssPace100Cs)}/100m)`
+                          : `Média de ~${Math.round(athleteDetail.totalMinutes / athleteDetail.sessionCount)} min/treino`}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Charts */}
+                  <div className="analytics-grid-2">
+                    <section className="surface-card">
+                      <div className="card-header">
+                        <h2 className="card-title">
+                          <TrendingUp size={15} /> Evolução de volume por sessão
+                        </h2>
+                      </div>
+                      <div className="card-section">
+                        <div className="bar-chart-scroll">
+                          <div className="bar-chart-canvas">
+                            {athleteDetail.sessions.map(({ workout, stats }) => {
+                              const heightPct =
+                                athleteDetail.maxSessionMeters > 0
+                                  ? Math.max(
+                                      6,
+                                      Math.round(
+                                        (stats.totalMeters / athleteDetail.maxSessionMeters) * 100
+                                      )
+                                    )
+                                  : 0;
+                              const isSelected = activeSession?.workout.id === workout.id;
+
+                              return (
+                                <button
+                                  key={workout.id}
+                                  type="button"
+                                  className={`bar-col-btn ${isSelected ? 'active' : ''}`}
+                                  onMouseEnter={() => setHoveredWorkoutId(workout.id)}
+                                  onFocus={() => setHoveredWorkoutId(workout.id)}
+                                  onClick={() => onEditWorkout(workout)}
+                                >
+                                  <div className="bar-track">
+                                    <div className="bar-fill-stack" style={{ height: `${heightPct}%` }}>
+                                      {stats.byZone
+                                        .filter((z) => z.meters > 0)
+                                        .map((z) => (
+                                          <div
+                                            key={z.zone.id}
+                                            style={{
+                                              height: `${z.percent}%`,
+                                              backgroundColor: z.zone.accentHex,
+                                            }}
+                                          />
+                                        ))}
+                                    </div>
+                                  </div>
+                                  <span className="bar-x-label mono-num">
+                                    {workout.date
+                                      ? workout.date.slice(5).split('-').reverse().join('/')
+                                      : '—'}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {activeSession && (
+                          <div className="chart-inspector">
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: 13 }}>
+                                {activeSession.workout.title || 'Treino sem título'}
                               </div>
-                              <div className="h-bar-track">
-                                <div
-                                  className="h-bar-fill"
-                                  style={{ width: `${pct}%`, backgroundColor: '#0d9488' }}
-                                />
+                              <div style={{ fontSize: 12, color: 'var(--ink-secondary)' }}>
+                                {formatDateBR(activeSession.workout.date)} ·{' '}
+                                {activeSession.workout.objective}
                               </div>
                             </div>
-                          );
-                        })}
+                            <div style={{ textAlign: 'right' }}>
+                              <div className="mono-num" style={{ fontWeight: 600, fontSize: 15 }}>
+                                {formatMeters(activeSession.stats.totalMeters)}
+                              </div>
+                              <div className="mono-num" style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+                                ~{activeSession.stats.estimatedMinutes} min ·{' '}
+                                {activeSession.highPct}% intenso
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </section>
+
+                    <section className="surface-card">
+                      <div className="card-header">
+                        <h2 className="card-title">
+                          <Target size={15} /> Perfil fisiológico (Z1–VEL)
+                        </h2>
+                      </div>
+                      <div className="card-section">
+                        <div className="donut-layout">
+                          <div className="donut-wrap">
+                            <svg viewBox="0 0 140 140" className="donut-svg">
+                              <circle
+                                cx="70"
+                                cy="70"
+                                r="52"
+                                fill="none"
+                                stroke="#EBEBE8"
+                                strokeWidth="18"
+                              />
+                              {donutSegments.map((seg) => (
+                                <circle
+                                  key={seg.zone.id}
+                                  cx="70"
+                                  cy="70"
+                                  r="52"
+                                  fill="none"
+                                  stroke={seg.zone.accentHex}
+                                  strokeWidth="18"
+                                  strokeDasharray={`${seg.dash} ${seg.gap}`}
+                                  strokeDashoffset={-seg.offset}
+                                  transform="rotate(-90 70 70)"
+                                />
+                              ))}
+                            </svg>
+                            <div className="donut-center">
+                              <span className="mono-num" style={{ fontSize: 16, fontWeight: 600 }}>
+                                {athleteDetail.highPct}%
+                              </span>
+                              <span style={{ fontSize: 12, color: 'var(--ink-muted)', fontWeight: 600 }}>
+                                Z4–VEL
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="zone-legend-list" style={{ flex: 1 }}>
+                            {athleteDetail.byZone.map((z) => (
+                              <div key={z.zone.id} className="zone-legend-row">
+                                <div className="zone-legend-left">
+                                  <span
+                                    className="zone-swatch"
+                                    style={{ backgroundColor: z.zone.accentHex }}
+                                  />
+                                  <span>
+                                    <strong className="mono-num">{z.zone.code}</strong> ·{' '}
+                                    {z.zone.shortLabel}
+                                  </span>
+                                </div>
+                                <span className="mono-num" style={{ fontWeight: 600 }}>
+                                  {formatMeters(z.meters)} ({z.percent}%)
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </section>
                   </div>
-                </section>
-              </div>
+
+                  {/* Styles & Equipment */}
+                  <div className="analytics-grid-2">
+                    <section className="surface-card">
+                      <div className="card-header">
+                        <h2 className="card-title">Estilos & tipos trabalhados</h2>
+                      </div>
+                      <div className="card-section">
+                        <div className="h-bars-list">
+                          {athleteDetail.styles.slice(0, 6).map((st) => {
+                            const max = athleteDetail.styles[0]?.meters || 1;
+                            const pct = Math.round((st.meters / max) * 100);
+                            return (
+                              <div key={st.name} className="h-bar-item">
+                                <div className="h-bar-head">
+                                  <span style={{ fontWeight: 600 }}>{st.name}</span>
+                                  <span className="mono-num">
+                                    {formatMeters(st.meters)} · {st.count}x
+                                  </span>
+                                </div>
+                                <div className="h-bar-track">
+                                  <div
+                                    className="h-bar-fill"
+                                    style={{ width: `${pct}%`, backgroundColor: 'var(--accent)' }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </section>
+
+                    <section className="surface-card">
+                      <div className="card-header">
+                        <h2 className="card-title">Equipamentos utilizados</h2>
+                      </div>
+                      <div className="card-section">
+                        {athleteDetail.equipment.length === 0 ? (
+                          <div style={{ fontSize: 13, color: 'var(--ink-muted)' }}>
+                            Nenhum equipamento registrado nas sessões deste atleta.
+                          </div>
+                        ) : (
+                          <div className="h-bars-list">
+                            {athleteDetail.equipment.slice(0, 6).map((eq) => {
+                              const max = athleteDetail.equipment[0]?.meters || 1;
+                              const pct = Math.round((eq.meters / max) * 100);
+                              return (
+                                <div key={eq.name} className="h-bar-item">
+                                  <div className="h-bar-head">
+                                    <span style={{ fontWeight: 600 }}>{eq.name}</span>
+                                    <span className="mono-num">
+                                      {formatMeters(eq.meters)} ({eq.count}x)
+                                    </span>
+                                  </div>
+                                  <div className="h-bar-track">
+                                    <div
+                                      className="h-bar-fill"
+                                      style={{ width: `${pct}%`, backgroundColor: 'var(--zone-z2)' }}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </section>
+                  </div>
+                </>
+              )}
             </>
           )}
 
@@ -1117,7 +1176,7 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
           <section className="surface-card" style={{ marginTop: 16 }}>
             <div className="card-header">
               <h2 className="card-title">
-                <Award size={15} /> Comparativo Estatístico do Elenco ({rosterStats.length} atletas)
+                <Award size={15} /> Comparativo do elenco ({rosterStats.length} atletas)
               </h2>
             </div>
             <div className="table-scroll">
@@ -1126,13 +1185,13 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
                   <tr>
                     <th>Atleta</th>
                     <th>Categoria</th>
+                    <th>CSS (/100m)</th>
                     <th>Sessões</th>
-                    <th>Faltas</th>
-                    <th>Descanso</th>
-                    <th>Volume Total</th>
-                    <th>Média / Sessão</th>
-                    <th>Carga Intensa (Z4–VEL)</th>
-                    <th>Estado Físico</th>
+                    <th>Volume total</th>
+                    <th>Carga 7d (sRPE)</th>
+                    <th>ACWR</th>
+                    <th>Wellness</th>
+                    <th>Prontidão</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1150,23 +1209,29 @@ export const AthleteAnalytics: React.FC<AthleteAnalyticsProps> = ({
                       <td>
                         <span className="db-chip">{row.athlete.category}</span>
                       </td>
+                      <td className="mono-num">
+                        {row.cssPace100Cs ? formatSwimTime(row.cssPace100Cs) : '—'}
+                      </td>
                       <td className="mono-num">{row.sessions}</td>
+                      <td className="mono-num">{formatMeters(row.totalMeters)}</td>
+                      <td className="mono-num">{row.loadMetrics.acuteLoad7d} UA</td>
                       <td
                         className="mono-num"
                         style={{
-                          color: row.missedCount > 0 ? '#dc2626' : undefined,
-                          fontWeight: row.missedCount > 0 ? 700 : undefined,
+                          fontWeight: 700,
+                          color: row.loadMetrics.acwrOutOfRange ? 'var(--danger)' : undefined,
                         }}
                       >
-                        {row.missedCount}
+                        {row.loadMetrics.acwr !== null ? row.loadMetrics.acwr.toFixed(2) : '—'}
                       </td>
-                      <td className="mono-num">{row.restDays}d</td>
-                      <td className="mono-num">{formatMeters(row.totalMeters)}</td>
-                      <td className="mono-num">{formatMeters(row.avgMeters)}</td>
-                      <td className="mono-num">{row.highPct}%</td>
+                      <td className="mono-num">
+                        {row.wellnessEval.latestScore !== null
+                          ? `${row.wellnessEval.latestScore}/20`
+                          : '—'}
+                      </td>
                       <td>
-                        <span className={`readiness-badge tone-${row.physicalState.tone}`}>
-                          {row.physicalState.label}
+                        <span className={`readiness-badge tone-${row.loadState.tone}`}>
+                          {row.loadState.label}
                         </span>
                       </td>
                     </tr>

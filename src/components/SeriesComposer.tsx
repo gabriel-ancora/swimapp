@@ -62,7 +62,7 @@ export const SeriesComposer: React.FC<SeriesComposerProps> = ({
   return (
     <form className="composer-box" onSubmit={handleSubmit}>
       <div className="composer-title">
-        <span>{initialItem ? 'Editar Série' : 'Adicionar Série ao Bloco'}</span>
+        <span>{initialItem ? 'Editar série' : 'Adicionar série ao bloco'}</span>
         <span className="mono-num" style={{ color: 'var(--accent-primary)' }}>
           Subtotal: {(Math.max(1, reps) * Math.max(0, distance)).toLocaleString('pt-BR')} m
         </span>
@@ -116,7 +116,7 @@ export const SeriesComposer: React.FC<SeriesComposerProps> = ({
 
         {/* Tipo de Série */}
         <div className="field col-4">
-          <label>Estilo / Tipo de Série</label>
+          <label>Estilo / tipo de série</label>
           <select
             className="select"
             value={seriesType}
@@ -132,7 +132,7 @@ export const SeriesComposer: React.FC<SeriesComposerProps> = ({
 
         {/* Intervalo */}
         <div className="field col-3">
-          <label>Intervalo / Saída</label>
+          <label>Intervalo / saída</label>
           <input
             type="text"
             className="input mono-num"
@@ -150,7 +150,7 @@ export const SeriesComposer: React.FC<SeriesComposerProps> = ({
 
         {/* Quick Distance Chips */}
         <div className="field col-12">
-          <label>Atalhos de Metragem (Base Própria)</label>
+          <label>Atalhos de metragem (base própria)</label>
           <div className="chip-row">
             {quickDistances.map((d) => (
               <button
@@ -167,7 +167,7 @@ export const SeriesComposer: React.FC<SeriesComposerProps> = ({
 
         {/* Zona de Intensidade */}
         <div className="field col-12">
-          <label>Intensidade / Zona Fisiológica</label>
+          <label>Intensidade / zona fisiológica</label>
           <div className="chip-row">
             {catalog.zones.map((z) => {
               const isSelected = zoneId === z.id;
@@ -212,7 +212,7 @@ export const SeriesComposer: React.FC<SeriesComposerProps> = ({
 
         {/* Observações */}
         <div className="field col-12">
-          <label>Observações Técnicas da Série</label>
+          <label>Observações técnicas da série</label>
           <input
             type="text"
             className="input"
@@ -229,7 +229,7 @@ export const SeriesComposer: React.FC<SeriesComposerProps> = ({
         </button>
         <button type="submit" className="btn btn-primary btn-sm">
           {initialItem ? <Check size={14} /> : <Plus size={14} />}
-          {initialItem ? 'Atualizar Série' : 'Confirmar Série'}
+          {initialItem ? 'Atualizar série' : 'Confirmar série'}
         </button>
       </div>
     </form>

@@ -1,31 +1,70 @@
+/* ==========================================================================
+   Design tokens
+   Neutral, warm-gray surfaces · one accent · semantic colors used sparingly.
+   ========================================================================== */
 :root {
-  --bg-canvas: #f4f6f9;
+  /* Surfaces */
+  --bg-canvas: #f6f6f4;
   --bg-surface: #ffffff;
-  --bg-subtle: #f8fafc;
-  --bg-hover: #f1f5f9;
-  --border-hairline: #e2e8f0;
-  --border-strong: #cbd5e1;
+  --bg-subtle: #fafaf9;
+  --bg-hover: #f2f2f0;
+  --bg-active: #ebebe8;
 
-  --ink-primary: #0b1220;
-  --ink-secondary: #475569;
-  --ink-muted: #64748b;
+  /* Lines */
+  --border-hairline: #e7e5e1;
+  --border-strong: #d6d3cd;
 
-  --accent-primary: #0057ff;
-  --accent-hover: #0046d1;
-  --accent-soft: #eff6ff;
-  --accent-border: #bfdbfe;
+  /* Text */
+  --ink-primary: #1c1b19;
+  --ink-secondary: #57534e;
+  --ink-muted: #8a857e;
+  --ink-faint: #b4afa7;
 
-  --danger: #dc2626;
-  --danger-soft: #fef2f2;
-  --success: #059669;
-  --success-soft: #ecfdf5;
+  /* Accent (pool blue) */
+  --accent: #1e56d9;
+  --accent-hover: #1847b8;
+  --accent-soft: #eef3fd;
+  --accent-border: #c9d7f6;
+  --accent-ink: #1740a3;
+  /* Back-compat alias used by inline styles */
+  --accent-primary: var(--accent);
 
-  --font-sans: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Semantic */
+  --danger: #c2362f;
+  --danger-soft: #fdf1f0;
+  --danger-border: #f3c9c5;
+  --success: #1f7a4d;
+  --success-soft: #eef7f1;
+  --success-border: #c4e3d0;
+  --warning: #9a6408;
+  --warning-soft: #fdf6e7;
+  --warning-border: #f1dcac;
 
+  /* Intensity scale (aeróbico → frio, anaeróbico → quente) */
+  --zone-z1: #a9bccd;
+  --zone-z2: #5b93c4;
+  --zone-z3: #2f5f9f;
+  --zone-z4: #e2a541;
+  --zone-z5: #d9673c;
+  --zone-vel: #a8322f;
+
+  /* Blocks */
+  --block-warmup: #a9bccd;
+  --block-main: var(--accent);
+  --block-cooldown: #c9c4bb;
+
+  /* Type */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Shape & depth */
   --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(28, 27, 25, 0.05);
+  --shadow-md: 0 4px 16px rgba(28, 27, 25, 0.08);
+  --shadow-lg: 0 12px 32px rgba(28, 27, 25, 0.14);
+
+  --sidebar-w: 248px;
 }
 
 *,
@@ -43,8 +82,10 @@ body {
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.5;
+  font-feature-settings: 'cv11', 'ss01';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 button,
@@ -60,28 +101,41 @@ button {
   cursor: pointer;
 }
 
-.mono-num {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-/* Custom subtle scrollbars */
+::selection {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+/* Numbers align in columns without switching typeface */
+.mono-num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.005em;
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--border-strong);
   border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--ink-faint);
+  background-clip: padding-box;
 }
 
-/* Print Styles — Pool Deck Sheet */
+/* Print — pool deck sheet */
 @media print {
   @page {
     size: A4 portrait;
@@ -104,4 +158,13 @@ button {
 
 .print-only {
   display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }

@@ -13,10 +13,14 @@ import {
 import type {
   Athlete,
   AthleteEventGoal,
+  AthleteSex,
   AthleteStatus,
   CoachProfile,
+  SwimResult,
   Team,
 } from '../types/swimming';
+import { computeBestMarksByEvent, SWIM_EVENTS } from '../domain/points';
+import { formatSwimTime } from '../domain/time';
 import { generateId } from '../utils/storage';
 
 interface TeamManagerProps {
@@ -24,13 +28,14 @@ interface TeamManagerProps {
   teams: Team[];
   activeTeam: Team | null;
   athletes: Athlete[];
+  results?: SwimResult[];
   onSelectTeam: (teamId: string) => void;
   onSaveTeam: (team: Team) => Promise<void> | void;
   onSaveAthlete: (athlete: Athlete) => Promise<void> | void;
   onDeleteAthlete: (athleteId: string) => Promise<void> | void;
 }
 
-const TEAM_COLORS = ['#0057ff', '#0d9488', '#dc2626', '#7c3aed', '#d97706', '#0f172a'];
+const TEAM_COLORS = ['#1E56D9', '#0F766E', '#A8322F', '#6D5BD0', '#C27C0E', '#1C1B19'];
 const DEFAULT_CATEGORIES = ['Infantil', 'Juvenil', 'Júnior', 'Sênior', 'Master'];
 
 export const TeamManager: React.FC<TeamManagerProps> = ({
@@ -38,6 +43,7 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
   teams,
   activeTeam,
   athletes,
+  results = [],
   onSelectTeam,
   onSaveTeam,
   onSaveAthlete,
@@ -46,7 +52,7 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
   const [isCreatingTeam, setIsCreatingTeam] = useState(teams.length === 0);
   const [teamName, setTeamName] = useState(activeTeam?.name ?? '');
   const [teamClub, setTeamClub] = useState(activeTeam?.club ?? '');
-  const [teamColor, setTeamColor] = useState(activeTeam?.accentColor ?? '#0057ff');
+  const [teamColor, setTeamColor] = useState(activeTeam?.accentColor ?? '#1E56D9');
   const [teamCategories, setTeamCategories] = useState<string[]>(
     activeTeam?.categories ?? DEFAULT_CATEGORIES
   );
@@ -61,13 +67,10 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
   const [athleteCategory, setAthleteCategory] = useState(
     activeTeam?.categories[0] ?? DEFAULT_CATEGORIES[0]
   );
+  const [athleteSex, setAthleteSex] = useState<AthleteSex>('M');
   const [athleteEvent, setAthleteEvent] = useState('');
-  const [athleteBestTime, setAthleteBestTime] = useState('');
-  const [athleteTargetTime, setAthleteTargetTime] = useState('');
   const [athleteEvents, setAthleteEvents] = useState<AthleteEventGoal[]>([]);
   const [extraEventName, setExtraEventName] = useState('');
-  const [extraEventBestTime, setExtraEventBestTime] = useState('');
-  const [extraEventTargetTime, setExtraEventTargetTime] = useState('');
   const [athleteStatus, setAthleteStatus] = useState<AthleteStatus>('Ativo');
   const [athleteNotes, setAthleteNotes] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -77,7 +80,7 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
     if (creatingNew || !team) {
       setTeamName('');
       setTeamClub('');
-      setTeamColor('#0057ff');
+      setTeamColor('#1E56D9');
       setTeamCategories(DEFAULT_CATEGORIES);
       setWeeklySessionsGoal(5);
     } else {
@@ -137,13 +140,10 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
     setEditingAthlete(null);
     setAthleteName('');
     setAthleteCategory(activeTeam?.categories[0] ?? DEFAULT_CATEGORIES[0]);
+    setAthleteSex('M');
     setAthleteEvent('');
-    setAthleteBestTime('');
-    setAthleteTargetTime('');
     setAthleteEvents([]);
     setExtraEventName('');
-    setExtraEventBestTime('');
-    setExtraEventTargetTime('');
     setAthleteStatus('Ativo');
     setAthleteNotes('');
   };
@@ -152,13 +152,10 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
     setEditingAthlete(ath);
     setAthleteName(ath.name);
     setAthleteCategory(ath.category);
+    setAthleteSex(ath.sex ?? 'M');
     setAthleteEvent(ath.mainEvent);
-    setAthleteBestTime(ath.bestTime);
-    setAthleteTargetTime(ath.targetTime ?? '');
     setAthleteEvents(ath.events ? ath.events.map((ev) => ({ ...ev })) : []);
     setExtraEventName('');
-    setExtraEventBestTime('');
-    setExtraEventTargetTime('');
     setAthleteStatus(ath.status);
     setAthleteNotes(ath.notes);
   };
@@ -171,22 +168,14 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
       {
         id: generateId('ev'),
         event: evName,
-        bestTime: extraEventBestTime.trim(),
-        targetTime: extraEventTargetTime.trim(),
       },
     ]);
     setExtraEventName('');
-    setExtraEventBestTime('');
-    setExtraEventTargetTime('');
   };
 
-  const handleUpdateExtraEvent = (
-    id: string,
-    field: 'event' | 'bestTime' | 'targetTime',
-    value: string
-  ) => {
+  const handleUpdateExtraEvent = (id: string, value: string) => {
     setAthleteEvents(
-      athleteEvents.map((ev) => (ev.id === id ? { ...ev, [field]: value } : ev))
+      athleteEvents.map((ev) => (ev.id === id ? { ...ev, event: value } : ev))
     );
   };
 
@@ -203,8 +192,6 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
       .map((ev) => ({
         ...ev,
         event: ev.event.trim(),
-        bestTime: ev.bestTime.trim(),
-        targetTime: ev.targetTime.trim(),
       }))
       .filter((ev) => ev.event.length > 0);
 
@@ -213,9 +200,8 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
           ...editingAthlete,
           name: athleteName.trim(),
           category: athleteCategory,
-          mainEvent: athleteEvent.trim() || 'Livre',
-          bestTime: athleteBestTime.trim(),
-          targetTime: athleteTargetTime.trim() || undefined,
+          sex: athleteSex,
+          mainEvent: athleteEvent.trim() || '100m Livre',
           events: cleanedEvents,
           status: athleteStatus,
           notes: athleteNotes.trim(),
@@ -226,9 +212,8 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
           teamId: activeTeam.id,
           name: athleteName.trim(),
           category: athleteCategory,
-          mainEvent: athleteEvent.trim() || 'Livre',
-          bestTime: athleteBestTime.trim(),
-          targetTime: athleteTargetTime.trim() || undefined,
+          sex: athleteSex,
+          mainEvent: athleteEvent.trim() || '100m Livre',
           events: cleanedEvents,
           status: athleteStatus,
           notes: athleteNotes.trim(),
@@ -249,11 +234,9 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
     <div>
       <div className="page-header">
         <div className="page-title-group">
-          <span className="page-eyebrow">Gestão de Elenco · Treinador {coach.name}</span>
-          <h1 className="page-title">Minha Equipe & Atletas</h1>
+          <h1 className="page-title">Equipe</h1>
           <p className="page-subtitle">
-            Personalize sua equipe, defina categorias/grupos, metas semanais e gerencie os atletas
-            cadastrados.
+            Dados da equipe, categorias, metas semanais e atletas.
           </p>
         </div>
 
@@ -264,7 +247,7 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
               className="btn"
               onClick={() => loadTeamIntoForm(null, true)}
             >
-              <Plus size={15} /> Nova Equipe
+              <Plus size={15} /> Nova equipe
             </button>
           )}
         </div>
@@ -274,7 +257,7 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
       {teams.length > 1 && (
         <div className="filters-bar">
           <span className="metric-label" style={{ margin: 0 }}>
-            Equipe Ativa:
+            Equipe ativa:
           </span>
           <div className="chip-row">
             {teams.map((tm) => (
@@ -311,14 +294,14 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
             <h2 className="card-title">
               <Settings2 size={15} />{' '}
               {isCreatingTeam || !activeTeam
-                ? 'Criar Nova Equipe'
-                : `Configurações da Equipe: ${activeTeam.name}`}
+                ? 'Criar nova equipe'
+                : `Configurações · ${activeTeam.name}`}
             </h2>
           </div>
           <form className="card-section" onSubmit={handleSubmitTeam}>
             <div className="form-grid">
               <div className="field col-6">
-                <label>Nome da Equipe</label>
+                <label>Nome da equipe</label>
                 <input
                   type="text"
                   className="input"
@@ -330,7 +313,7 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
               </div>
 
               <div className="field col-6">
-                <label>Clube / Cidade</label>
+                <label>Clube / cidade</label>
                 <input
                   type="text"
                   className="input"
@@ -341,7 +324,7 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
               </div>
 
               <div className="field col-12">
-                <label>Meta de Sessões / Semana</label>
+                <label>Meta de sessões / semana</label>
                 <input
                   type="number"
                   min={1}
@@ -355,7 +338,7 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
               <div className="field col-12">
                 <label>
                   <Palette size={11} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-                  Cor de Identidade da Equipe
+                  Cor de identidade da equipe
                 </label>
                 <div className="chip-row">
                   {TEAM_COLORS.map((hex) => (
@@ -372,7 +355,7 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
               </div>
 
               <div className="field col-12">
-                <label>Categorias / Grupos Personalizados</label>
+                <label>Categorias / grupos personalizados</label>
                 <div className="catalog-add-form" style={{ marginBottom: 8 }}>
                   <input
                     type="text"
@@ -388,7 +371,7 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
                     }}
                   />
                   <button type="button" className="btn btn-sm" onClick={handleAddCategory}>
-                    <Plus size={14} /> Add
+                    <Plus size={14} /> Adicionar
                   </button>
                 </div>
                 <div className="tag-cloud">
@@ -420,7 +403,7 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
               )}
               <button type="submit" className="btn btn-primary btn-sm">
                 <Check size={14} />
-                {isCreatingTeam || !activeTeam ? 'Criar Equipe' : 'Salvar Configurações'}
+                {isCreatingTeam || !activeTeam ? 'Criar equipe' : 'Salvar configurações'}
               </button>
             </div>
           </form>
@@ -430,7 +413,7 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
         <section className="surface-card">
           <div className="card-header">
             <h2 className="card-title">
-              <UserPlus size={15} /> {editingAthlete ? 'Editar Atleta' : 'Cadastrar Atleta na Equipe'}
+              <UserPlus size={15} /> {editingAthlete ? 'Editar atleta' : 'Cadastrar atleta na equipe'}
             </h2>
           </div>
           {!activeTeam ? (
@@ -439,9 +422,14 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
             </div>
           ) : (
             <form className="card-section" onSubmit={handleSubmitAthlete}>
+              <datalist id="swim-events-list">
+                {SWIM_EVENTS.map((ev) => (
+                  <option key={ev} value={ev} />
+                ))}
+              </datalist>
               <div className="form-grid">
                 <div className="field col-6">
-                  <label>Nome do Atleta</label>
+                  <label>Nome do atleta</label>
                   <input
                     type="text"
                     className="input"
@@ -452,8 +440,8 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
                   />
                 </div>
 
-                <div className="field col-6">
-                  <label>Categoria / Grupo</label>
+                <div className="field col-3">
+                  <label>Categoria / grupo</label>
                   <select
                     className="select"
                     value={athleteCategory}
@@ -467,72 +455,51 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
                   </select>
                 </div>
 
-                <div className="field col-4">
-                  <label>Prova Principal</label>
+                <div className="field col-3">
+                  <label>Sexo (World Aquatics)</label>
+                  <select
+                    className="select"
+                    value={athleteSex}
+                    onChange={(e) => setAthleteSex(e.target.value as AthleteSex)}
+                  >
+                    <option value="M">Masculino</option>
+                    <option value="F">Feminino</option>
+                  </select>
+                </div>
+
+                <div className="field col-12">
+                  <label>Prova principal</label>
                   <input
                     type="text"
+                    list="swim-events-list"
                     className="input"
                     value={athleteEvent}
                     onChange={(e) => setAthleteEvent(e.target.value)}
                     placeholder="Ex: 100m Livre"
                   />
-                </div>
-
-                <div className="field col-4">
-                  <label>Melhor Marca</label>
-                  <input
-                    type="text"
-                    className="input mono-num"
-                    value={athleteBestTime}
-                    onChange={(e) => setAthleteBestTime(e.target.value)}
-                    placeholder="Ex: 52.40s"
-                  />
-                </div>
-
-                <div className="field col-4">
-                  <label>Tempo Meta (Prova Principal)</label>
-                  <input
-                    type="text"
-                    className="input mono-num"
-                    value={athleteTargetTime}
-                    onChange={(e) => setAthleteTargetTime(e.target.value)}
-                    placeholder="Ex: 50.90s"
-                  />
+                  <span style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 4, display: 'block' }}>
+                    Melhores marcas (25m e 50m) e metas são calculadas automaticamente pelos resultados registrados em <strong>Atletas</strong>.
+                  </span>
                 </div>
 
                 <div className="field col-12">
-                  <label>Outras Provas & Tempos de Meta</label>
+                  <label>Outras provas do atleta</label>
                   <div className="athlete-events-box">
                     {athleteEvents.length > 0 && (
                       <div className="athlete-events-list">
                         {athleteEvents.map((ev) => (
-                          <div key={ev.id} className="athlete-event-row">
+                          <div
+                            key={ev.id}
+                            className="athlete-event-row"
+                            style={{ gridTemplateColumns: '1fr auto' }}
+                          >
                             <input
                               type="text"
+                              list="swim-events-list"
                               className="input"
                               value={ev.event}
-                              onChange={(e) =>
-                                handleUpdateExtraEvent(ev.id, 'event', e.target.value)
-                              }
+                              onChange={(e) => handleUpdateExtraEvent(ev.id, e.target.value)}
                               placeholder="Prova (ex: 200m Livre)"
-                            />
-                            <input
-                              type="text"
-                              className="input mono-num"
-                              value={ev.bestTime}
-                              onChange={(e) =>
-                                handleUpdateExtraEvent(ev.id, 'bestTime', e.target.value)
-                              }
-                              placeholder="Melhor marca"
-                            />
-                            <input
-                              type="text"
-                              className="input mono-num"
-                              value={ev.targetTime}
-                              onChange={(e) =>
-                                handleUpdateExtraEvent(ev.id, 'targetTime', e.target.value)
-                              }
-                              placeholder="Tempo meta"
                             />
                             <button
                               type="button"
@@ -547,39 +514,17 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
                       </div>
                     )}
 
-                    <div className="athlete-event-row">
+                    <div
+                      className="athlete-event-row"
+                      style={{ gridTemplateColumns: '1fr auto' }}
+                    >
                       <input
                         type="text"
+                        list="swim-events-list"
                         className="input"
                         value={extraEventName}
                         onChange={(e) => setExtraEventName(e.target.value)}
                         placeholder="Outra prova (ex: 50m Borboleta)"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleAddExtraEvent();
-                          }
-                        }}
-                      />
-                      <input
-                        type="text"
-                        className="input mono-num"
-                        value={extraEventBestTime}
-                        onChange={(e) => setExtraEventBestTime(e.target.value)}
-                        placeholder="Melhor marca"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleAddExtraEvent();
-                          }
-                        }}
-                      />
-                      <input
-                        type="text"
-                        className="input mono-num"
-                        value={extraEventTargetTime}
-                        onChange={(e) => setExtraEventTargetTime(e.target.value)}
-                        placeholder="Tempo meta"
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             e.preventDefault();
@@ -593,7 +538,7 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
                         onClick={handleAddExtraEvent}
                         title="Adicionar outra prova"
                       >
-                        <Plus size={14} /> Add
+                        <Plus size={14} /> Adicionar
                       </button>
                     </div>
                   </div>
@@ -613,7 +558,7 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
                 </div>
 
                 <div className="field col-8">
-                  <label>Observações Técnicas</label>
+                  <label>Observações técnicas</label>
                   <input
                     type="text"
                     className="input"
@@ -631,7 +576,7 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
                   </button>
                 )}
                 <button type="submit" className="btn btn-primary btn-sm">
-                  <Plus size={14} /> {editingAthlete ? 'Atualizar Atleta' : 'Adicionar Atleta'}
+                  <Plus size={14} /> {editingAthlete ? 'Atualizar atleta' : 'Adicionar atleta'}
                 </button>
               </div>
             </form>
@@ -678,19 +623,31 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
                   <tr>
                     <th>Atleta</th>
                     <th>Categoria</th>
-                    <th>Prova Principal & Meta</th>
-                    <th>Outras Provas & Metas</th>
+                    <th>Prova principal (automática)</th>
+                    <th>Melhores marcas</th>
                     <th>Status</th>
                     <th style={{ textAlign: 'right' }}>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredAthletes.map((ath) => (
+                  {filteredAthletes.map((ath) => {
+                    const athResults = results.filter((r) => r.athleteId === ath.id);
+                    const bestMarks = computeBestMarksByEvent(athResults);
+                    const mainMarks = bestMarks.filter((b) => b.event === ath.mainEvent);
+                    const mainBest25 = mainMarks.find((b) => b.poolLength === 25)?.bestResult;
+                    const mainBest50 = mainMarks.find((b) => b.poolLength === 50)?.bestResult;
+
+                    return (
                     <tr key={ath.id}>
                       <td>
-                        <div style={{ fontWeight: 600 }}>{ath.name}</div>
+                        <div style={{ fontWeight: 600 }}>
+                          {ath.name}{' '}
+                          <span style={{ fontSize: 11, color: 'var(--ink-muted)', fontWeight: 500 }}>
+                            ({ath.sex ?? 'M'})
+                          </span>
+                        </div>
                         {ath.notes && (
-                          <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{ath.notes}</div>
+                          <div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{ath.notes}</div>
                         )}
                       </td>
                       <td>
@@ -698,19 +655,33 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
                       </td>
                       <td>
                         <div style={{ fontWeight: 600 }}>{ath.mainEvent || '—'}</div>
-                        <div className="mono-num" style={{ fontSize: 11, color: 'var(--ink-secondary)' }}>
-                          Marca: {ath.bestTime || '—'}
-                          {ath.targetTime ? ` · Meta: ${ath.targetTime}` : ''}
+                        <div className="mono-num" style={{ fontSize: 12, color: 'var(--ink-secondary)' }}>
+                          {mainBest25 ? `25m: ${formatSwimTime(mainBest25.timeCs)}` : ''}
+                          {mainBest25 && mainBest50 ? ' · ' : ''}
+                          {mainBest50 ? `50m: ${formatSwimTime(mainBest50.timeCs)}` : ''}
+                          {!mainBest25 && !mainBest50 && (ath.bestTime ? `Legado: ${ath.bestTime}` : 'Sem tempos registrados')}
+                          {ath.targetTimeCs
+                            ? ` · Meta: ${formatSwimTime(ath.targetTimeCs)}`
+                            : ath.targetTime
+                              ? ` · Meta: ${ath.targetTime}`
+                              : ''}
                         </div>
                       </td>
                       <td>
-                        {ath.events && ath.events.length > 0 ? (
+                        {bestMarks.length > 0 ? (
+                          <div className="tag-cloud">
+                            {bestMarks.slice(0, 4).map((bm) => (
+                              <span key={`${bm.event}-${bm.poolLength}`} className="db-chip">
+                                <strong>{bm.event}</strong> ({bm.poolLength}m) ·{' '}
+                                <span className="mono-num">{formatSwimTime(bm.bestResult.timeCs)}</span>
+                              </span>
+                            ))}
+                          </div>
+                        ) : ath.events && ath.events.length > 0 ? (
                           <div className="tag-cloud">
                             {ath.events.map((ev) => (
                               <span key={ev.id} className="db-chip">
                                 <strong>{ev.event}</strong>
-                                {ev.bestTime ? ` · ${ev.bestTime}` : ''}
-                                {ev.targetTime ? ` → ${ev.targetTime}` : ''}
                               </span>
                             ))}
                           </div>
@@ -744,7 +715,8 @@ export const TeamManager: React.FC<TeamManagerProps> = ({
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

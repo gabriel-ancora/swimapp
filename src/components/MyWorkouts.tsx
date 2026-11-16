@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Calendar, Copy, Edit3, Plus, Printer, Search, Trash2, UserX, Waves } from 'lucide-react';
-import type { Athlete, CatalogDatabase, Workout } from '../types/swimming';
+import type { Athlete, CatalogDatabase, CssTest, Workout } from '../types/swimming';
+import { resolveWorkoutCssPace100Cs } from '../domain/pace';
 import {
   computeWorkoutStats,
   formatDateBR,
@@ -12,6 +13,7 @@ interface MyWorkoutsProps {
   workouts: Workout[];
   catalog: CatalogDatabase;
   athletes: Athlete[];
+  cssTests?: CssTest[];
   onEdit: (workout: Workout) => void;
   onPrint: (workout: Workout) => void;
   onDuplicate: (workout: Workout) => void;
@@ -25,6 +27,7 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
   workouts,
   catalog,
   athletes,
+  cssTests = [],
   onEdit,
   onPrint,
   onDuplicate,
@@ -62,16 +65,15 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
     <div>
       <div className="page-header">
         <div className="page-title-group">
-          <span className="page-eyebrow">Biblioteca de Sessões</span>
-          <h1 className="page-title">Meus Treinos</h1>
+          <h1 className="page-title">Biblioteca</h1>
           <p className="page-subtitle">
-            Consulte, modifique, duplique ou imprima suas fichas técnicas de natação.
+            Todos os treinos salvos. Edite, duplique, imprima ou marque como concluído.
           </p>
         </div>
 
         <button type="button" className="btn btn-primary" onClick={onCreateNew}>
           <Plus size={15} />
-          Novo Treino
+          Novo treino
         </button>
       </div>
 
@@ -142,7 +144,7 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
           style={{ textAlign: 'center', padding: '48px 24px' }}
         >
           <Waves size={28} style={{ color: 'var(--ink-muted)', marginBottom: 8 }} />
-          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
+          <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>
             Nenhum treino encontrado
           </div>
           <p style={{ margin: '0 0 16px 0', color: 'var(--ink-secondary)', fontSize: 13 }}>
@@ -151,13 +153,14 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
               : 'Ajuste os filtros de busca para localizar o treino desejado.'}
           </p>
           <button type="button" className="btn btn-primary" onClick={onCreateNew}>
-            <Plus size={15} /> Criar Novo Treino
+            <Plus size={15} /> Criar novo treino
           </button>
         </div>
       ) : (
         <div className="workouts-grid">
           {filteredWorkouts.map((wk) => {
-            const stats = computeWorkoutStats(wk.items, catalog.zones);
+            const effectiveCss = resolveWorkoutCssPace100Cs(wk, athletes, cssTests);
+            const stats = computeWorkoutStats(wk.items, catalog.zones, effectiveCss);
             const isConfirming = confirmDeleteId === wk.id;
 
             return (
@@ -168,7 +171,7 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
                 <div className="workout-card-top">
                   <div style={{ flex: 1 }}>
                     <div className="workout-card-title-row">
-                      <h3 className="workout-card-title">{wk.title || 'Treino Sem Título'}</h3>
+                      <h3 className="workout-card-title">{wk.title || 'Treino sem título'}</h3>
                       <label
                         className={`workout-completed-check ${wk.completed ? 'checked' : ''}`}
                         title="Marcar treino como concluído para contabilizar nos painéis"
@@ -240,13 +243,12 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
                     <span
                       style={{
                         display: 'block',
-                        fontSize: 10,
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
+                        fontSize: 12,
+                        fontWeight: 500,
                         color: 'var(--ink-muted)',
                       }}
                     >
-                      Volume Total
+                      Volume total
                     </span>
                     <strong className="mono-num" style={{ fontSize: 18 }}>
                       {formatMeters(stats.totalMeters)}
@@ -256,9 +258,8 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
                     <span
                       style={{
                         display: 'block',
-                        fontSize: 10,
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
+                        fontSize: 12,
+                        fontWeight: 500,
                         color: 'var(--ink-muted)',
                       }}
                     >
@@ -272,13 +273,12 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
                     <span
                       style={{
                         display: 'block',
-                        fontSize: 10,
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
+                        fontSize: 12,
+                        fontWeight: 500,
                         color: 'var(--ink-muted)',
                       }}
                     >
-                      Duração Est.
+                      Duração est.
                     </span>
                     <strong className="mono-num" style={{ fontSize: 14 }}>
                       ~{stats.estimatedMinutes} min
@@ -306,7 +306,7 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
                     style={{
                       display: 'flex',
                       justifyContent: 'space-between',
-                      fontSize: 11,
+                      fontSize: 12,
                       color: 'var(--ink-muted)',
                     }}
                   >
@@ -337,7 +337,7 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
                       <button
                         type="button"
                         className={`btn btn-ghost btn-sm ${absentCount > 0 ? 'has-absences' : ''}`}
-                        style={{ padding: '4px 8px', fontSize: 11 }}
+                        style={{ padding: '4px 8px', fontSize: 12 }}
                         onClick={() => setAttendanceOpenId(isOpen ? null : wk.id)}
                       >
                         <UserX size={12} />
@@ -375,11 +375,11 @@ export const MyWorkouts: React.FC<MyWorkoutsProps> = ({
                 <div className="workout-card-actions">
                   <button
                     type="button"
-                    className="btn btn-primary btn-sm"
+                    className="btn btn-sm"
                     style={{ flex: 1 }}
                     onClick={() => onEdit(wk)}
                   >
-                    <Edit3 size={13} /> Modificar
+                    <Edit3 size={13} /> Editar
                   </button>
                   <button
                     type="button"

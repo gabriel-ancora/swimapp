@@ -10,7 +10,8 @@ import {
   UserCheck,
   Waves,
 } from 'lucide-react';
-import type { BlockType, CatalogDatabase, Workout, ZoneId } from '../types/swimming';
+import type { Athlete, BlockType, CatalogDatabase, CssTest, Workout, ZoneId } from '../types/swimming';
+import { resolveWorkoutCssPace100Cs } from '../domain/pace';
 import {
   computeWorkoutStats,
   estimateItemSeconds,
@@ -22,6 +23,8 @@ import {
 interface AnalyticsDashboardProps {
   workouts: Workout[];
   catalog: CatalogDatabase;
+  athletes?: Athlete[];
+  cssTests?: CssTest[];
   onCreateNew: () => void;
   onEditWorkout: (workout: Workout) => void;
 }
@@ -29,9 +32,9 @@ interface AnalyticsDashboardProps {
 type PeriodFilter = '7d' | '30d' | '90d' | 'all';
 
 const BLOCK_LABELS: Record<BlockType, { label: string; color: string }> = {
-  aquecimento: { label: 'Aquecimento', color: '#0d9488' },
-  principal: { label: 'Série Principal', color: '#0057ff' },
-  complementar: { label: 'Complementares', color: '#64748b' },
+  aquecimento: { label: 'Aquecimento', color: 'var(--block-warmup)' },
+  principal: { label: 'Principal', color: 'var(--block-main)' },
+  complementar: { label: 'Complementar', color: 'var(--block-cooldown)' },
 };
 
 function formatDurationLong(totalMinutes: number): string {
@@ -44,6 +47,8 @@ function formatDurationLong(totalMinutes: number): string {
 export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
   workouts,
   catalog,
+  athletes = [],
+  cssTests = [],
   onCreateNew,
   onEditWorkout,
 }) => {
@@ -144,7 +149,8 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
     }> = [];
 
     for (const wk of filteredWorkouts) {
-      const stats = computeWorkoutStats(wk.items, catalog.zones);
+      const effectiveCss = resolveWorkoutCssPace100Cs(wk, athletes, cssTests);
+      const stats = computeWorkoutStats(wk.items, catalog.zones, effectiveCss);
       totalMeters += stats.totalMeters;
       totalMinutes += stats.estimatedMinutes;
       totalSeries += wk.items.length;
@@ -166,7 +172,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
 
       for (const item of wk.items) {
         const m = getItemMeters(item);
-        const sec = estimateItemSeconds(item);
+        const sec = estimateItemSeconds(item, effectiveCss);
         totalReps += item.reps;
         zoneMeters[item.zoneId] = (zoneMeters[item.zoneId] || 0) + m;
         zoneMinutes[item.zoneId] = (zoneMinutes[item.zoneId] || 0) + sec / 60;
@@ -259,7 +265,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
       sessions,
       maxSessionMeters,
     };
-  }, [filteredWorkouts, catalog.zones]);
+  }, [filteredWorkouts, catalog.zones, athletes, cssTests]);
 
   // SVG Donut math for physiological zones
   const donutSegments = useMemo(() => {
@@ -301,11 +307,9 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
     <div>
       <div className="page-header">
         <div className="page-title-group">
-          <span className="page-eyebrow">Inteligência & Telemetria</span>
-          <h1 className="page-title">Painel Analítico de Treinos</h1>
+          <h1 className="page-title">Painel</h1>
           <p className="page-subtitle">
-            Análise consolidada em tempo real de volume, zonas fisiológicas, blocos, estilos e
-            equipamentos a partir dos treinos cadastrados.
+            Volume, intensidade e estrutura dos treinos concluídos.
           </p>
         </div>
       </div>
@@ -401,17 +405,17 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           style={{ textAlign: 'center', padding: '52px 24px', marginTop: 16 }}
         >
           <BarChart3 size={30} style={{ color: 'var(--ink-muted)', marginBottom: 10 }} />
-          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>
+          <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>
             Nenhum dado disponível para os filtros atuais
           </div>
           <p style={{ margin: '0 0 16px 0', color: 'var(--ink-secondary)', fontSize: 13 }}>
             {workouts.length === 0
-              ? 'Nenhum treino concluído ainda. Marque os treinos como concluídos na aba Treinos para contabilizá-los no painel.'
+              ? 'Nenhum treino concluído ainda. Marque os treinos como concluídos na Biblioteca para que entrem no painel.'
               : 'Ajuste o período, piscina, técnico ou objetivo para analisar os treinos concluídos.'}
           </p>
           {workouts.length === 0 && (
             <button type="button" className="btn btn-primary" onClick={onCreateNew}>
-              Criar Primeiro Treino
+              Criar primeiro treino
             </button>
           )}
         </div>
@@ -421,7 +425,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           <div className="kpi-grid">
             <div className="surface-card kpi-card">
               <div className="kpi-top">
-                <span className="metric-label">Volume Total</span>
+                <span className="metric-label">Volume total</span>
                 <Waves size={16} style={{ color: 'var(--accent-primary)' }} />
               </div>
               <div className="kpi-value mono-num">{formatMeters(analytics.totalMeters)}</div>
@@ -436,8 +440,8 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
 
             <div className="surface-card kpi-card">
               <div className="kpi-top">
-                <span className="metric-label">Sessões & Séries</span>
-                <Activity size={16} style={{ color: '#0d9488' }} />
+                <span className="metric-label">Sessões & séries</span>
+                <Activity size={16} />
               </div>
               <div className="kpi-value mono-num">{analytics.sessionCount}</div>
               <div className="kpi-sub">
@@ -447,8 +451,8 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
 
             <div className="surface-card kpi-card">
               <div className="kpi-top">
-                <span className="metric-label">Tempo Estimado</span>
-                <Clock size={16} style={{ color: '#6366f1' }} />
+                <span className="metric-label">Tempo estimado</span>
+                <Clock size={16} />
               </div>
               <div className="kpi-value mono-num">
                 {formatDurationLong(analytics.totalMinutes)}
@@ -458,8 +462,8 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
 
             <div className="surface-card kpi-card">
               <div className="kpi-top">
-                <span className="metric-label">Carga Intensa (Z4–VEL)</span>
-                <Flame size={16} style={{ color: '#dc2626' }} />
+                <span className="metric-label">Carga intensa (Z4–VEL)</span>
+                <Flame size={16} style={{ color: 'var(--danger)' }} />
               </div>
               <div className="kpi-value mono-num">{analytics.highIntensityPercent}%</div>
               <div className="kpi-sub">
@@ -474,7 +478,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
             <section className="surface-card">
               <div className="card-header">
                 <h2 className="card-title">
-                  <TrendingUp size={15} /> Evolução de Volume por Sessão
+                  <TrendingUp size={15} /> Evolução de volume por sessão
                 </h2>
                 <span className="mono-num" style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
                   {analytics.sessions.length} sessões
@@ -527,8 +531,8 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                 {activeHoveredSession && (
                   <div className="chart-inspector">
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>
-                        {activeHoveredSession.workout.title || 'Treino Sem Título'}
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>
+                        {activeHoveredSession.workout.title || 'Treino sem título'}
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--ink-secondary)' }}>
                         {formatDateBR(activeHoveredSession.workout.date)} · Piscina{' '}
@@ -537,10 +541,10 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div className="mono-num" style={{ fontWeight: 700, fontSize: 15 }}>
+                      <div className="mono-num" style={{ fontWeight: 600, fontSize: 15 }}>
                         {formatMeters(activeHoveredSession.stats.totalMeters)}
                       </div>
-                      <div className="mono-num" style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
+                      <div className="mono-num" style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
                         ~{activeHoveredSession.stats.estimatedMinutes} min ·{' '}
                         {activeHoveredSession.highIntensityPercent}% intenso
                       </div>
@@ -554,7 +558,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
             <section className="surface-card">
               <div className="card-header">
                 <h2 className="card-title">
-                  <Target size={15} /> Distribuição por Zona Fisiológica
+                  <Target size={15} /> Distribuição por zona fisiológica
                 </h2>
                 <span className="mono-num" style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
                   Z1 – VEL
@@ -569,7 +573,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                         cy="70"
                         r="52"
                         fill="none"
-                        stroke="#f1f5f9"
+                        stroke="#EBEBE8"
                         strokeWidth="18"
                       />
                       {donutSegments.map((seg) => (
@@ -588,10 +592,10 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                       ))}
                     </svg>
                     <div className="donut-center">
-                      <span className="mono-num" style={{ fontSize: 16, fontWeight: 700 }}>
+                      <span className="mono-num" style={{ fontSize: 16, fontWeight: 600 }}>
                         {analytics.highIntensityPercent}%
                       </span>
-                      <span style={{ fontSize: 10, color: 'var(--ink-muted)', fontWeight: 700 }}>
+                      <span style={{ fontSize: 12, color: 'var(--ink-muted)', fontWeight: 600 }}>
                         Z4–VEL
                       </span>
                     </div>
@@ -629,7 +633,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
             <section className="surface-card">
               <div className="card-header">
                 <h2 className="card-title">
-                  <Layers size={15} /> Estrutura por Bloco
+                  <Layers size={15} /> Estrutura por bloco
                 </h2>
               </div>
               <div className="card-section">
@@ -684,7 +688,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
             {/* Top Series Types / Styles */}
             <section className="surface-card">
               <div className="card-header">
-                <h2 className="card-title">Estilos & Tipos de Série</h2>
+                <h2 className="card-title">Estilos & tipos de série</h2>
                 <span className="mono-num" style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
                   Top {Math.min(6, analytics.topSeries.length)}
                 </span>
@@ -705,7 +709,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                         <div className="h-bar-track">
                           <div
                             className="h-bar-fill"
-                            style={{ width: `${pct}%`, backgroundColor: '#0057ff' }}
+                            style={{ width: `${pct}%`, backgroundColor: 'var(--accent)' }}
                           />
                         </div>
                       </div>
@@ -718,12 +722,12 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
             {/* Equipment & Objectives */}
             <section className="surface-card">
               <div className="card-header">
-                <h2 className="card-title">Equipamentos & Objetivos</h2>
+                <h2 className="card-title">Equipamentos & objetivos</h2>
               </div>
               <div className="card-section" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div>
                   <div className="metric-label" style={{ marginBottom: 8 }}>
-                    Equipamentos Utilizados
+                    Equipamentos utilizados
                   </div>
                   {analytics.byEquipment.length === 0 ? (
                     <div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
@@ -745,7 +749,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                             <div className="h-bar-track">
                               <div
                                 className="h-bar-fill"
-                                style={{ width: `${pct}%`, backgroundColor: '#0d9488' }}
+                                style={{ width: `${pct}%`, backgroundColor: 'var(--zone-z2)' }}
                               />
                             </div>
                           </div>
@@ -757,7 +761,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
 
                 <div style={{ borderTop: '1px solid var(--border-hairline)', paddingTop: 12 }}>
                   <div className="metric-label" style={{ marginBottom: 8 }}>
-                    Objetivos das Sessões
+                    Objetivos das sessões
                   </div>
                   <div className="tag-cloud">
                     {analytics.byObjective.map((obj) => (
@@ -778,7 +782,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           <section className="surface-card" style={{ marginTop: 16 }}>
             <div className="card-header">
               <h2 className="card-title">
-                <UserCheck size={15} /> Resumo por Técnico Responsável
+                <UserCheck size={15} /> Resumo por técnico responsável
               </h2>
             </div>
             <div className="table-scroll">
@@ -787,9 +791,9 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                   <tr>
                     <th>Técnico</th>
                     <th>Sessões</th>
-                    <th>Volume Total</th>
-                    <th>Média / Sessão</th>
-                    <th>Carga Intensa (Z4–VEL)</th>
+                    <th>Volume total</th>
+                    <th>Média / sessão</th>
+                    <th>Carga intensa (Z4–VEL)</th>
                   </tr>
                 </thead>
                 <tbody>

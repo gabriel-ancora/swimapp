@@ -1,24 +1,25 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useMutation, useQuery } from 'convex/react';
-import { makeFunctionReference } from 'convex/server';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useAction, useMutation, useQuery } from 'convex/react';
+import { api } from '../convex/_generated/api';
 import {
   Activity,
   BarChart3,
+  CalendarRange,
   CheckCircle2,
+  ChevronsUpDown,
   ClipboardList,
-  Cloud,
-  CloudOff,
-  Database,
+  Library,
   LogOut,
-  PlusSquare,
-  Target,
+  Menu,
+  SquarePen,
   Users,
-  Waves,
+  type LucideIcon,
 } from 'lucide-react';
 import './App.css';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { AthleteAnalytics } from './components/AthleteAnalytics';
 import { AuthScreen } from './components/AuthScreen';
+import { Logo, LogoMark } from './components/Logo';
 import { CatalogManager } from './components/CatalogManager';
 import { MyWorkouts } from './components/MyWorkouts';
 import { PlanningManager } from './components/PlanningManager';
@@ -26,106 +27,107 @@ import { PrintSheet } from './components/PrintSheet';
 import { TeamManager } from './components/TeamManager';
 import { WorkoutBuilder } from './components/WorkoutBuilder';
 import { DEFAULT_CATALOG } from './data/defaultDatabase';
+import { todayLocalISO } from './domain/date';
+import { buildLegacyTimeMigration } from './domain/migration';
 import type {
   ActiveTab,
   Athlete,
   CatalogDatabase,
   CoachProfile,
+  CssTest,
   PeriodizationPhase,
+  QualifyingStandard,
+  RpeLog,
+  SwimResult,
   Team,
   TrainingPlan,
+  WellnessEntry,
   Workout,
 } from './types/swimming';
 import {
+  type AuthSession,
   clearSession,
   generateId,
   hashPasswordClient,
   loadCatalog,
   loadLocalAthletes,
   loadLocalCoaches,
+  loadLocalCssTests,
   loadLocalPlans,
+  loadLocalResults,
+  loadLocalRpeLogs,
+  loadLocalStandards,
   loadLocalTeams,
+  loadLocalWellness,
   loadSession,
   loadWorkouts,
   resetCatalog,
   saveCatalog,
   saveLocalAthletes,
   saveLocalCoaches,
+  saveLocalCssTests,
   saveLocalPlans,
+  saveLocalResults,
+  saveLocalRpeLogs,
+  saveLocalStandards,
   saveLocalTeams,
+  saveLocalWellness,
   saveSession,
   saveWorkouts,
 } from './utils/storage';
 
-const workoutsListQuery = makeFunctionReference<
-  'query',
-  { coachId?: string },
-  Workout[]
->('workouts:list');
-const workoutUpsertMutation = makeFunctionReference<'mutation', { workout: Workout }, void>(
-  'workouts:upsert'
-);
-const workoutRemoveMutation = makeFunctionReference<'mutation', { id: string }, void>(
-  'workouts:remove'
-);
-
-type StoredCatalog = Omit<CatalogDatabase, 'zones'>;
-const catalogGetQuery = makeFunctionReference<'query', Record<string, never>, StoredCatalog | null>(
-  'catalog:get'
-);
-const catalogSaveMutation = makeFunctionReference<'mutation', StoredCatalog, void>('catalog:save');
-
-const authRegisterMutation = makeFunctionReference<
-  'mutation',
+const NAV_GROUPS: Array<{
+  label: string;
+  items: Array<{ tab: ActiveTab; label: string; Icon: LucideIcon }>;
+}> = [
   {
-    id: string;
-    name: string;
-    email: string;
-    password: string;
-    cref: string;
-    specialty: string;
-    createdAt: string;
+    label: 'Treinos',
+    items: [
+      { tab: 'novo', label: 'Novo treino', Icon: SquarePen },
+      { tab: 'treinos', label: 'Biblioteca', Icon: ClipboardList },
+      { tab: 'planejamento', label: 'Planejamento', Icon: CalendarRange },
+    ],
   },
-  CoachProfile
->('auth:register');
+  {
+    label: 'Análise',
+    items: [
+      { tab: 'painel', label: 'Painel', Icon: BarChart3 },
+      { tab: 'atletas', label: 'Atletas', Icon: Activity },
+    ],
+  },
+  {
+    label: 'Configuração',
+    items: [
+      { tab: 'equipe', label: 'Equipe', Icon: Users },
+      { tab: 'base', label: 'Base técnica', Icon: Library },
+    ],
+  },
+];
 
-const authLoginMutation = makeFunctionReference<
-  'mutation',
-  { email: string; password: string },
-  CoachProfile
->('auth:login');
+const TAB_TITLES: Record<ActiveTab, string> = {
+  novo: 'Novo treino',
+  treinos: 'Biblioteca',
+  planejamento: 'Planejamento',
+  painel: 'Painel',
+  atletas: 'Atletas',
+  equipe: 'Equipe',
+  base: 'Base técnica',
+};
 
-const teamsListQuery = makeFunctionReference<'query', { coachId: string }, Team[]>(
-  'teams:listByCoach'
-);
-const teamUpsertMutation = makeFunctionReference<'mutation', { team: Team }, void>('teams:upsert');
-
-const athletesListQuery = makeFunctionReference<'query', { teamId: string }, Athlete[]>(
-  'athletes:listByTeam'
-);
-const athleteUpsertMutation = makeFunctionReference<'mutation', { athlete: Athlete }, void>(
-  'athletes:upsert'
-);
-const athleteRemoveMutation = makeFunctionReference<'mutation', { id: string }, void>(
-  'athletes:remove'
-);
-
-const plansListQuery = makeFunctionReference<'query', { coachId: string }, TrainingPlan[]>(
-  'plans:listByCoach'
-);
-const planUpsertMutation = makeFunctionReference<'mutation', { plan: TrainingPlan }, void>(
-  'plans:upsert'
-);
-const planRemoveMutation = makeFunctionReference<'mutation', { id: string }, void>(
-  'plans:remove'
-);
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  const first = parts[0][0];
+  const last = parts.length > 1 ? parts[parts.length - 1][0] : '';
+  return (first + last).toUpperCase();
+}
 
 function createEmptyWorkout(
   catalog: CatalogDatabase,
   coach: CoachProfile,
   activeTeam: Team | null
 ): Workout {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocalISO();
   const now = new Date().toISOString();
   return {
     id: generateId('wk'),
@@ -152,6 +154,11 @@ interface AppShellProps {
   activeTeam: Team | null;
   athletes: Athlete[];
   plans: TrainingPlan[];
+  results: SwimResult[];
+  standards: QualifyingStandard[];
+  cssTests: CssTest[];
+  rpeLogs: RpeLog[];
+  wellnessEntries: WellnessEntry[];
   syncMode: 'cloud' | 'local';
   isLoadingCloud?: boolean;
   onSelectTeam: (teamId: string) => void;
@@ -160,6 +167,16 @@ interface AppShellProps {
   onDeleteAthlete: (athleteId: string) => void | Promise<void>;
   onSavePlan: (plan: TrainingPlan) => void | Promise<void>;
   onDeletePlan: (planId: string) => void | Promise<void>;
+  onSaveResult: (result: SwimResult) => void | Promise<void>;
+  onDeleteResult: (id: string) => void | Promise<void>;
+  onSaveStandard: (standard: QualifyingStandard) => void | Promise<void>;
+  onDeleteStandard: (id: string) => void | Promise<void>;
+  onSaveCssTest: (test: CssTest) => void | Promise<void>;
+  onDeleteCssTest: (id: string) => void | Promise<void>;
+  onSaveRpeLog: (log: RpeLog) => void | Promise<void>;
+  onDeleteRpeLog: (id: string) => void | Promise<void>;
+  onSaveWellness: (entry: WellnessEntry) => void | Promise<void>;
+  onDeleteWellness: (id: string) => void | Promise<void>;
   onUpdateCatalog: (next: CatalogDatabase) => void | Promise<void>;
   onResetCatalog: () => void | Promise<void>;
   onPersistWorkout: (workout: Workout, isEditing: boolean) => void | Promise<void>;
@@ -175,6 +192,11 @@ function AppShell({
   activeTeam,
   athletes,
   plans,
+  results,
+  standards,
+  cssTests,
+  rpeLogs,
+  wellnessEntries,
   syncMode,
   isLoadingCloud = false,
   onSelectTeam,
@@ -183,6 +205,16 @@ function AppShell({
   onDeleteAthlete,
   onSavePlan,
   onDeletePlan,
+  onSaveResult,
+  onDeleteResult,
+  onSaveStandard,
+  onDeleteStandard,
+  onSaveCssTest,
+  onDeleteCssTest,
+  onSaveRpeLog,
+  onDeleteRpeLog,
+  onSaveWellness,
+  onDeleteWellness,
   onUpdateCatalog,
   onResetCatalog,
   onPersistWorkout,
@@ -190,6 +222,19 @@ function AppShell({
   onLogout,
 }: AppShellProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('novo');
+  const [navOpen, setNavOpen] = useState(false);
+
+  const goTo = (tab: ActiveTab) => {
+    setActiveTab(tab);
+    setNavOpen(false);
+    window.scrollTo({ top: 0 });
+  };
+
+  const navCounts: Partial<Record<ActiveTab, number | string>> = {
+    treinos: isLoadingCloud ? '…' : workouts.length,
+    planejamento: plans.length,
+    equipe: athletes.length,
+  };
   const [draft, setDraft] = useState<Workout>(() =>
     createEmptyWorkout(catalog, coach, activeTeam)
   );
@@ -237,7 +282,7 @@ function AppShell({
       setEditingId(finalWorkout.id);
     }
     setDraft(finalWorkout);
-    showToast(isEditing ? 'Treino atualizado em Meus Treinos.' : 'Treino salvo em Meus Treinos.');
+    showToast(isEditing ? 'Alterações salvas.' : 'Treino salvo na biblioteca.');
   };
 
   const handlePrint = (workoutToPrint: Workout) => {
@@ -260,7 +305,7 @@ function AppShell({
       ...workout,
       items: workout.items.map((item) => ({ ...item, equipment: [...item.equipment] })),
     });
-    setActiveTab('novo');
+    goTo('novo');
   };
 
   const handleDuplicateWorkout = async (workout: Workout) => {
@@ -349,116 +394,121 @@ function AppShell({
       title: phase ? `${plan.title} — ${phase.name}` : plan.title,
       generalNotes: phase?.focus ? `Foco da fase: ${phase.focus}` : '',
     });
-    setActiveTab('novo');
+    goTo('novo');
   };
 
   return (
     <>
       <div className="app-shell no-print">
-        <header className="topbar">
-          <div className="topbar-inner">
-            <div className="brand">
-              <div
-                className="brand-mark"
-                style={activeTeam ? { background: activeTeam.accentColor } : undefined}
-              >
-                <Waves size={18} />
+        <aside className={`sidebar ${navOpen ? 'open' : ''}`} aria-label="Navegação principal">
+          <div className="sidebar-head">
+            <Logo />
+            {activeTeam && (
+              <div className="team-switcher" title={teams.length > 1 ? 'Trocar de equipe' : undefined}>
+                <span className="team-switcher-dot" style={{ background: activeTeam.accentColor }}>
+                  {activeTeam.name.trim().charAt(0).toUpperCase()}
+                </span>
+                <span className="team-switcher-text">
+                  <span className="team-switcher-name">{activeTeam.name}</span>
+                  {activeTeam.club && <span className="team-switcher-club">{activeTeam.club}</span>}
+                </span>
+                {teams.length > 1 && (
+                  <>
+                    <ChevronsUpDown size={14} className="team-switcher-chevron" />
+                    <select
+                      aria-label="Equipe ativa"
+                      value={activeTeam.id}
+                      onChange={(e) => onSelectTeam(e.target.value)}
+                    >
+                      {teams.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
               </div>
-              <div className="brand-text">
-                <span className="brand-name">{activeTeam ? activeTeam.name : 'RAIA // PRO'}</span>
-                <span className="brand-sub">{coach.name}</span>
+            )}
+          </div>
+
+          <nav className="sidebar-nav">
+            {NAV_GROUPS.map((group) => (
+              <div className="nav-group" key={group.label}>
+                <span className="nav-group-label">{group.label}</span>
+                {group.items.map(({ tab, label, Icon }) => {
+                  const count = navCounts[tab];
+                  return (
+                    <button
+                      key={tab}
+                      type="button"
+                      data-nav
+                      className={`nav-item ${activeTab === tab ? 'active' : ''}`}
+                      aria-current={activeTab === tab ? 'page' : undefined}
+                      onClick={() => goTo(tab)}
+                    >
+                      <Icon size={16} strokeWidth={1.9} />
+                      {label}
+                      {count !== undefined && <span className="nav-count">{count}</span>}
+                    </button>
+                  );
+                })}
               </div>
-            </div>
+            ))}
+          </nav>
 
-            <nav className="nav-tabs" aria-label="Navegação Principal">
-              <button
-                type="button"
-                className={`nav-tab ${activeTab === 'novo' ? 'active' : ''}`}
-                onClick={() => setActiveTab('novo')}
-              >
-                <PlusSquare size={15} />
-                Novo Treino
-              </button>
-              <button
-                type="button"
-                className={`nav-tab ${activeTab === 'planejamento' ? 'active' : ''}`}
-                onClick={() => setActiveTab('planejamento')}
-              >
-                <Target size={15} />
-                Planejamento
-                <span className="nav-badge">{plans.length}</span>
-              </button>
-              <button
-                type="button"
-                className={`nav-tab ${activeTab === 'treinos' ? 'active' : ''}`}
-                onClick={() => setActiveTab('treinos')}
-              >
-                <ClipboardList size={15} />
-                Treinos
-                <span className="nav-badge">{isLoadingCloud ? '…' : workouts.length}</span>
-              </button>
-              <button
-                type="button"
-                className={`nav-tab ${activeTab === 'painel' ? 'active' : ''}`}
-                onClick={() => setActiveTab('painel')}
-              >
-                <BarChart3 size={15} />
-                Painel
-              </button>
-              <button
-                type="button"
-                className={`nav-tab ${activeTab === 'atletas' ? 'active' : ''}`}
-                onClick={() => setActiveTab('atletas')}
-              >
-                <Activity size={15} />
-                Atletas
-              </button>
-              <button
-                type="button"
-                className={`nav-tab ${activeTab === 'equipe' ? 'active' : ''}`}
-                onClick={() => setActiveTab('equipe')}
-              >
-                <Users size={15} />
-                Equipe
-                <span className="nav-badge">{athletes.length}</span>
-              </button>
-              <button
-                type="button"
-                className={`nav-tab ${activeTab === 'base' ? 'active' : ''}`}
-                onClick={() => setActiveTab('base')}
-              >
-                <Database size={15} />
-                Base
-              </button>
-            </nav>
-
-            <div className="topbar-meta">
-              <span
-                className={`sync-pill ${syncMode}`}
-                title={
-                  syncMode === 'cloud'
-                    ? 'Sincronizado em tempo real via Convex'
-                    : 'Armazenamento local (configure VITE_CONVEX_URL para sincronizar)'
-                }
-              >
-                {syncMode === 'cloud' ? <Cloud size={12} /> : <CloudOff size={12} />}
-                {syncMode === 'cloud' ? 'Nuvem' : 'Local'}
+          <div className="sidebar-foot">
+            <span
+              className="sync-note"
+              title={
+                syncMode === 'cloud'
+                  ? 'Dados sincronizados em tempo real'
+                  : 'Dados salvos apenas neste navegador'
+              }
+            >
+              <span className={`sync-dot ${syncMode}`} />
+              {syncMode === 'cloud' ? 'Sincronizado' : 'Modo local'}
+            </span>
+            <div className="user-row">
+              <span className="avatar" aria-hidden="true">
+                {initials(coach.name)}
               </span>
-              <span className="pool-pill">
-                PISCINA {activeTab === 'novo' ? `${draft.poolLength}M` : '25M / 50M'}
+              <span className="user-text">
+                <span className="user-name">{coach.name}</span>
+                <span className="user-email">{coach.email}</span>
               </span>
               <button
                 type="button"
-                className="btn btn-ghost btn-sm"
+                className="btn btn-ghost btn-icon"
                 onClick={onLogout}
-                title="Sair da conta"
+                title="Sair"
+                aria-label="Sair"
               >
-                <LogOut size={14} />
-                Sair
+                <LogOut size={16} />
               </button>
             </div>
           </div>
-        </header>
+        </aside>
+
+        <div
+          className={`sidebar-backdrop ${navOpen ? 'open' : ''}`}
+          onClick={() => setNavOpen(false)}
+          aria-hidden="true"
+        />
+
+        <div className="content-area">
+          <header className="mobile-topbar">
+            <button
+              type="button"
+              className="btn btn-ghost btn-icon"
+              onClick={() => setNavOpen(true)}
+              aria-label="Abrir menu"
+            >
+              <Menu size={18} />
+            </button>
+            <span className="mobile-topbar-title">{TAB_TITLES[activeTab]}</span>
+            <LogoMark size={26} />
+          </header>
 
         <main className="main-container">
           {activeTab === 'novo' && (
@@ -468,12 +518,13 @@ function AppShell({
               catalog={catalog}
               activeTeam={activeTeam}
               athletes={athletes}
+              cssTests={cssTests}
               plans={plans}
               onChangeDraft={setDraft}
               onSaveWorkout={handleSaveWorkout}
               onPrintWorkout={() => handlePrint(draft)}
               onResetDraft={handleResetDraft}
-              onGoToPlanning={() => setActiveTab('planejamento')}
+              onGoToPlanning={() => goTo('planejamento')}
               onQuickAddAthlete={async (ath) => {
                 await onSaveAthlete(ath);
                 showToast('Atleta adicionado à equipe.');
@@ -510,6 +561,7 @@ function AppShell({
               workouts={workouts}
               catalog={catalog}
               athletes={athletes}
+              cssTests={cssTests}
               onEdit={handleEditFromList}
               onPrint={handlePrint}
               onDuplicate={handleDuplicateWorkout}
@@ -518,7 +570,7 @@ function AppShell({
               onToggleAthleteAbsence={handleToggleAthleteAbsence}
               onCreateNew={() => {
                 handleResetDraft();
-                setActiveTab('novo');
+                goTo('novo');
               }}
             />
           )}
@@ -527,10 +579,12 @@ function AppShell({
             <AnalyticsDashboard
               workouts={workouts.filter((w) => Boolean(w.completed))}
               catalog={catalog}
+              athletes={athletes}
+              cssTests={cssTests}
               onEditWorkout={handleEditFromList}
               onCreateNew={() => {
                 handleResetDraft();
-                setActiveTab('novo');
+                goTo('novo');
               }}
             />
           )}
@@ -538,13 +592,60 @@ function AppShell({
           {activeTab === 'atletas' && (
             <AthleteAnalytics
               activeTeam={activeTeam}
+              coachId={coach.id}
               athletes={athletes}
               workouts={workouts.filter((w) => Boolean(w.completed))}
               plans={plans}
               catalog={catalog}
+              results={results}
+              standards={standards}
+              cssTests={cssTests}
+              rpeLogs={rpeLogs}
+              wellnessEntries={wellnessEntries}
+              onSaveResult={async (res) => {
+                await onSaveResult(res);
+                showToast('Resultado registrado.');
+              }}
+              onDeleteResult={async (id) => {
+                await onDeleteResult(id);
+                showToast('Resultado removido.');
+              }}
+              onSaveStandard={async (std) => {
+                await onSaveStandard(std);
+                showToast('Índice salvo.');
+              }}
+              onDeleteStandard={async (id) => {
+                await onDeleteStandard(id);
+                showToast('Índice removido.');
+              }}
+              onSaveCssTest={async (t) => {
+                await onSaveCssTest(t);
+                showToast('Teste de CSS registrado.');
+              }}
+              onDeleteCssTest={async (id) => {
+                await onDeleteCssTest(id);
+                showToast('Teste de CSS removido.');
+              }}
+              onSaveRpeLog={async (l) => {
+                await onSaveRpeLog(l);
+                showToast('RPE registrado.');
+              }}
+              onDeleteRpeLog={async (id) => {
+                await onDeleteRpeLog(id);
+                showToast('Registro de RPE removido.');
+              }}
+              onSaveWellness={async (w) => {
+                await onSaveWellness(w);
+                showToast('Wellness diário registrado.');
+              }}
+              onDeleteWellness={async (id) => {
+                await onDeleteWellness(id);
+                showToast('Registro de wellness removido.');
+              }}
+              onSaveAthlete={onSaveAthlete}
               onEditWorkout={handleEditFromList}
               onToggleAthleteAbsence={handleToggleAthleteAbsence}
-              onGoToTeam={() => setActiveTab('equipe')}
+              onGoToTeam={() => goTo('equipe')}
             />
           )}
 
@@ -554,6 +655,7 @@ function AppShell({
               teams={teams}
               activeTeam={activeTeam}
               athletes={athletes}
+              results={results}
               onSelectTeam={onSelectTeam}
               onSaveTeam={async (team) => {
                 await onSaveTeam(team);
@@ -578,13 +680,19 @@ function AppShell({
             />
           )}
         </main>
+        </div>
       </div>
 
-      <PrintSheet workout={printTarget} catalog={catalog} />
+      <PrintSheet
+        workout={printTarget}
+        catalog={catalog}
+        athletes={athletes}
+        cssTests={cssTests}
+      />
 
       {toast && (
         <div className="toast no-print" role="status">
-          <CheckCircle2 size={16} style={{ color: '#34d399' }} />
+          <CheckCircle2 size={16} style={{ color: '#7fd1a6' }} />
           <span>{toast}</span>
         </div>
       )}
@@ -594,15 +702,20 @@ function AppShell({
 
 function ConvexApp({
   coach,
+  sessionToken,
   onLogout,
 }: {
   coach: CoachProfile;
+  sessionToken: string;
   onLogout: () => void;
 }) {
-  const cloudWorkouts = useQuery(workoutsListQuery, { coachId: coach.id });
-  const cloudCatalog = useQuery(catalogGetQuery, {});
-  const cloudTeams = useQuery(teamsListQuery, { coachId: coach.id });
-  const cloudPlans = useQuery(plansListQuery, { coachId: coach.id });
+  const auth = { sessionToken };
+  const me = useQuery(api.auth.me, auth);
+  const cloudWorkouts = useQuery(api.workouts.list, auth);
+  const cloudCatalog = useQuery(api.catalog.get, auth);
+  const cloudTeams = useQuery(api.teams.list, auth);
+  const cloudPlans = useQuery(api.plans.list, auth);
+  const cloudStandards = useQuery(api.qualifyingStandards.list, auth);
 
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const activeTeam = useMemo(() => {
@@ -610,19 +723,57 @@ function ConvexApp({
     return list.find((t) => t.id === selectedTeamId) ?? list[0] ?? null;
   }, [cloudTeams, selectedTeamId]);
 
-  const cloudAthletes = useQuery(
-    athletesListQuery,
-    activeTeam ? { teamId: activeTeam.id } : 'skip'
-  );
+  const teamArg = activeTeam ? { sessionToken, teamId: activeTeam.id } : 'skip';
+  const cloudAthletes = useQuery(api.athletes.listByTeam, teamArg);
+  const cloudResults = useQuery(api.results.listByTeam, teamArg);
+  const cloudCssTests = useQuery(api.cssTests.listByTeam, teamArg);
+  const cloudRpeLogs = useQuery(api.rpeLogs.listByTeam, teamArg);
+  const cloudWellness = useQuery(api.wellness.listByTeam, teamArg);
 
-  const upsertWorkout = useMutation(workoutUpsertMutation);
-  const removeWorkout = useMutation(workoutRemoveMutation);
-  const saveCloudCatalog = useMutation(catalogSaveMutation);
-  const upsertTeam = useMutation(teamUpsertMutation);
-  const upsertAthlete = useMutation(athleteUpsertMutation);
-  const removeAthlete = useMutation(athleteRemoveMutation);
-  const upsertPlan = useMutation(planUpsertMutation);
-  const removePlan = useMutation(planRemoveMutation);
+  const upsertWorkout = useMutation(api.workouts.upsert);
+  const removeWorkout = useMutation(api.workouts.remove);
+  const saveCloudCatalog = useMutation(api.catalog.save);
+  const upsertTeam = useMutation(api.teams.upsert);
+  const upsertAthlete = useMutation(api.athletes.upsert);
+  const removeAthlete = useMutation(api.athletes.remove);
+  const upsertPlan = useMutation(api.plans.upsert);
+  const removePlan = useMutation(api.plans.remove);
+  const upsertResult = useMutation(api.results.upsert);
+  const removeResult = useMutation(api.results.remove);
+  const upsertStandard = useMutation(api.qualifyingStandards.upsert);
+  const removeStandard = useMutation(api.qualifyingStandards.remove);
+  const upsertCssTest = useMutation(api.cssTests.upsert);
+  const removeCssTest = useMutation(api.cssTests.remove);
+  const upsertRpeLog = useMutation(api.rpeLogs.upsert);
+  const removeRpeLog = useMutation(api.rpeLogs.remove);
+  const upsertWellness = useMutation(api.wellness.upsert);
+  const removeWellness = useMutation(api.wellness.remove);
+  const logoutMutation = useMutation(api.auth.logout);
+
+  // Server says the session is gone (expired, revoked or forged): back to login.
+  useEffect(() => {
+    if (me === null) onLogout();
+  }, [me, onLogout]);
+
+  // Idempotent migration: convert legacy athlete bestTime/targetTime strings into centisecond results/goals.
+  const migratedTeamsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!activeTeam || !cloudAthletes || !cloudResults) return;
+    if (migratedTeamsRef.current.has(activeTeam.id)) return;
+    migratedTeamsRef.current.add(activeTeam.id);
+
+    const plan = buildLegacyTimeMigration(cloudAthletes, cloudResults, me?.id ?? coach.id);
+    if (plan.resultsToCreate.length === 0 && plan.athletesToUpdate.length === 0) return;
+
+    void (async () => {
+      for (const res of plan.resultsToCreate) {
+        await upsertResult({ sessionToken, result: res });
+      }
+      for (const ath of plan.athletesToUpdate) {
+        await upsertAthlete({ sessionToken, athlete: ath });
+      }
+    })();
+  }, [activeTeam, cloudAthletes, cloudResults, me?.id, coach.id, sessionToken, upsertResult, upsertAthlete]);
 
   const catalog = useMemo<CatalogDatabase>(() => {
     if (!cloudCatalog) return DEFAULT_CATALOG;
@@ -648,6 +799,7 @@ function ConvexApp({
 
   const handleUpdateCatalog = async (next: CatalogDatabase) => {
     await saveCloudCatalog({
+      sessionToken,
       seriesTypes: next.seriesTypes,
       distances: next.distances,
       intervals: next.intervals,
@@ -658,6 +810,7 @@ function ConvexApp({
 
   const handleResetCatalog = async () => {
     await saveCloudCatalog({
+      sessionToken,
       seriesTypes: DEFAULT_CATALOG.seriesTypes,
       distances: DEFAULT_CATALOG.distances,
       intervals: DEFAULT_CATALOG.intervals,
@@ -668,41 +821,80 @@ function ConvexApp({
 
   return (
     <AppShell
-      coach={coach}
+      coach={me ?? coach}
       catalog={catalog}
       workouts={cloudWorkouts ?? []}
       teams={cloudTeams ?? []}
       activeTeam={activeTeam}
       athletes={cloudAthletes ?? []}
       plans={cloudPlans ?? []}
+      results={cloudResults ?? []}
+      standards={cloudStandards ?? []}
+      cssTests={cloudCssTests ?? []}
+      rpeLogs={cloudRpeLogs ?? []}
+      wellnessEntries={cloudWellness ?? []}
       syncMode="cloud"
       isLoadingCloud={cloudWorkouts === undefined}
       onSelectTeam={setSelectedTeamId}
       onSaveTeam={async (team) => {
-        await upsertTeam({ team });
+        await upsertTeam({ sessionToken, team });
         setSelectedTeamId(team.id);
       }}
       onSaveAthlete={async (athlete) => {
-        await upsertAthlete({ athlete });
+        await upsertAthlete({ sessionToken, athlete });
       }}
       onDeleteAthlete={async (id) => {
-        await removeAthlete({ id });
+        await removeAthlete({ sessionToken, id });
       }}
       onSavePlan={async (plan) => {
-        await upsertPlan({ plan });
+        await upsertPlan({ sessionToken, plan });
       }}
       onDeletePlan={async (id) => {
-        await removePlan({ id });
+        await removePlan({ sessionToken, id });
+      }}
+      onSaveResult={async (result) => {
+        await upsertResult({ sessionToken, result });
+      }}
+      onDeleteResult={async (id) => {
+        await removeResult({ sessionToken, id });
+      }}
+      onSaveStandard={async (standard) => {
+        await upsertStandard({ sessionToken, standard });
+      }}
+      onDeleteStandard={async (id) => {
+        await removeStandard({ sessionToken, id });
+      }}
+      onSaveCssTest={async (test) => {
+        await upsertCssTest({ sessionToken, test });
+      }}
+      onDeleteCssTest={async (id) => {
+        await removeCssTest({ sessionToken, id });
+      }}
+      onSaveRpeLog={async (rpeLog) => {
+        await upsertRpeLog({ sessionToken, rpeLog });
+      }}
+      onDeleteRpeLog={async (id) => {
+        await removeRpeLog({ sessionToken, id });
+      }}
+      onSaveWellness={async (entry) => {
+        await upsertWellness({ sessionToken, entry });
+      }}
+      onDeleteWellness={async (id) => {
+        await removeWellness({ sessionToken, id });
       }}
       onUpdateCatalog={handleUpdateCatalog}
       onResetCatalog={handleResetCatalog}
       onPersistWorkout={async (workout) => {
-        await upsertWorkout({ workout });
+        await upsertWorkout({ sessionToken, workout });
       }}
       onDeleteWorkout={async (id) => {
-        await removeWorkout({ id });
+        await removeWorkout({ sessionToken, id });
       }}
-      onLogout={onLogout}
+      onLogout={() => {
+        // Revoke server-side; leave the UI immediately even if the network call fails.
+        void logoutMutation({ sessionToken }).catch(() => undefined);
+        onLogout();
+      }}
     />
   );
 }
@@ -710,34 +902,33 @@ function ConvexApp({
 function ConvexAuthGate({
   onAuthenticated,
 }: {
-  onAuthenticated: (coach: CoachProfile) => void;
+  onAuthenticated: (session: AuthSession) => void;
 }) {
-  const loginMutation = useMutation(authLoginMutation);
-  const registerMutation = useMutation(authRegisterMutation);
+  const loginAction = useAction(api.passwords.login);
+  const registerAction = useAction(api.passwords.register);
+
+  const startSession = ({ profile, sessionToken }: { profile: CoachProfile; sessionToken: string }) => {
+    const session: AuthSession = { ...profile, sessionToken };
+    saveSession(session);
+    onAuthenticated(session);
+  };
 
   return (
     <AuthScreen
       syncMode="cloud"
       onLogin={async (email, password) => {
-        const profile = await loginMutation({ email, password });
-        saveSession(profile);
-        onAuthenticated(profile);
+        startSession(await loginAction({ email, password }));
       }}
       onRegister={async ({ name, email, password, cref, specialty }) => {
-        const profile = await registerMutation({
-          id: generateId('ch'),
-          name,
-          email,
-          password,
-          cref,
-          specialty,
-          createdAt: new Date().toISOString(),
-        });
-        saveSession(profile);
-        onAuthenticated(profile);
+        startSession(await registerAction({ name, email, password, cref, specialty }));
       }}
     />
   );
+}
+
+function upsertLocalItem<T extends { id: string }>(list: T[], item: T): T[] {
+  const exists = list.some((x) => x.id === item.id);
+  return exists ? list.map((x) => (x.id === item.id ? item : x)) : [item, ...list];
 }
 
 function LocalApp({
@@ -753,9 +944,34 @@ function LocalApp({
     loadLocalTeams().filter((t) => t.coachId === coach.id)
   );
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
-  const [athletes, setAthletes] = useState<Athlete[]>(() => loadLocalAthletes());
+
+  const initialMigration = useMemo(() => {
+    const rawAthletes = loadLocalAthletes();
+    const rawResults = loadLocalResults();
+    const plan = buildLegacyTimeMigration(rawAthletes, rawResults, coach.id);
+    if (plan.resultsToCreate.length === 0 && plan.athletesToUpdate.length === 0) {
+      return { athletes: rawAthletes, results: rawResults };
+    }
+    const nextResults = [...plan.resultsToCreate, ...rawResults];
+    const updatedMap = new Map(plan.athletesToUpdate.map((a) => [a.id, a]));
+    const nextAthletes = rawAthletes.map((a) => updatedMap.get(a.id) ?? a);
+    saveLocalResults(nextResults);
+    saveLocalAthletes(nextAthletes);
+    return { athletes: nextAthletes, results: nextResults };
+  }, [coach.id]);
+
+  const [athletes, setAthletes] = useState<Athlete[]>(() => initialMigration.athletes);
   const [plans, setPlans] = useState<TrainingPlan[]>(() =>
     loadLocalPlans().filter((p) => p.coachId === coach.id)
+  );
+  const [results, setResults] = useState<SwimResult[]>(() => initialMigration.results);
+  const [standards, setStandards] = useState<QualifyingStandard[]>(() =>
+    loadLocalStandards().filter((s) => s.coachId === coach.id)
+  );
+  const [cssTests, setCssTests] = useState<CssTest[]>(() => loadLocalCssTests());
+  const [rpeLogs, setRpeLogs] = useState<RpeLog[]>(() => loadLocalRpeLogs());
+  const [wellnessEntries, setWellnessEntries] = useState<WellnessEntry[]>(() =>
+    loadLocalWellness()
   );
 
   const activeTeam = useMemo(() => {
@@ -767,6 +983,23 @@ function LocalApp({
     return athletes.filter((a) => a.teamId === activeTeam.id);
   }, [athletes, activeTeam]);
 
+  const activeResults = useMemo(
+    () => (activeTeam ? results.filter((r) => r.teamId === activeTeam.id) : []),
+    [results, activeTeam]
+  );
+  const activeCssTests = useMemo(
+    () => (activeTeam ? cssTests.filter((c) => c.teamId === activeTeam.id) : []),
+    [cssTests, activeTeam]
+  );
+  const activeRpeLogs = useMemo(
+    () => (activeTeam ? rpeLogs.filter((l) => l.teamId === activeTeam.id) : []),
+    [rpeLogs, activeTeam]
+  );
+  const activeWellness = useMemo(
+    () => (activeTeam ? wellnessEntries.filter((w) => w.teamId === activeTeam.id) : []),
+    [wellnessEntries, activeTeam]
+  );
+
   return (
     <AppShell
       coach={coach}
@@ -776,21 +1009,22 @@ function LocalApp({
       activeTeam={activeTeam}
       athletes={activeAthletes}
       plans={plans}
+      results={activeResults}
+      standards={standards}
+      cssTests={activeCssTests}
+      rpeLogs={activeRpeLogs}
+      wellnessEntries={activeWellness}
       syncMode="local"
       onSelectTeam={setSelectedTeamId}
       onSaveTeam={(team) => {
         const all = loadLocalTeams();
-        const exists = all.some((t) => t.id === team.id);
-        const nextAll = exists ? all.map((t) => (t.id === team.id ? team : t)) : [team, ...all];
+        const nextAll = upsertLocalItem(all, team);
         saveLocalTeams(nextAll);
         setTeams(nextAll.filter((t) => t.coachId === coach.id));
         setSelectedTeamId(team.id);
       }}
       onSaveAthlete={(athlete) => {
-        const exists = athletes.some((a) => a.id === athlete.id);
-        const next = exists
-          ? athletes.map((a) => (a.id === athlete.id ? athlete : a))
-          : [...athletes, athlete];
+        const next = upsertLocalItem(athletes, athlete);
         setAthletes(next);
         saveLocalAthletes(next);
       }}
@@ -798,11 +1032,26 @@ function LocalApp({
         const next = athletes.filter((a) => a.id !== id);
         setAthletes(next);
         saveLocalAthletes(next);
+
+        const nextResults = results.filter((r) => r.athleteId !== id);
+        setResults(nextResults);
+        saveLocalResults(nextResults);
+
+        const nextCss = cssTests.filter((c) => c.athleteId !== id);
+        setCssTests(nextCss);
+        saveLocalCssTests(nextCss);
+
+        const nextRpe = rpeLogs.filter((l) => l.athleteId !== id);
+        setRpeLogs(nextRpe);
+        saveLocalRpeLogs(nextRpe);
+
+        const nextWell = wellnessEntries.filter((w) => w.athleteId !== id);
+        setWellnessEntries(nextWell);
+        saveLocalWellness(nextWell);
       }}
       onSavePlan={(plan) => {
         const all = loadLocalPlans();
-        const exists = all.some((p) => p.id === plan.id);
-        const nextAll = exists ? all.map((p) => (p.id === plan.id ? plan : p)) : [plan, ...all];
+        const nextAll = upsertLocalItem(all, plan);
         saveLocalPlans(nextAll);
         setPlans(nextAll.filter((p) => p.coachId === coach.id));
       }}
@@ -811,6 +1060,58 @@ function LocalApp({
         const nextAll = all.filter((p) => p.id !== id);
         saveLocalPlans(nextAll);
         setPlans(nextAll.filter((p) => p.coachId === coach.id));
+      }}
+      onSaveResult={(result) => {
+        const next = upsertLocalItem(results, result);
+        setResults(next);
+        saveLocalResults(next);
+      }}
+      onDeleteResult={(id) => {
+        const next = results.filter((r) => r.id !== id);
+        setResults(next);
+        saveLocalResults(next);
+      }}
+      onSaveStandard={(standard) => {
+        const all = loadLocalStandards();
+        const nextAll = upsertLocalItem(all, standard);
+        saveLocalStandards(nextAll);
+        setStandards(nextAll.filter((s) => s.coachId === coach.id));
+      }}
+      onDeleteStandard={(id) => {
+        const all = loadLocalStandards();
+        const nextAll = all.filter((s) => s.id !== id);
+        saveLocalStandards(nextAll);
+        setStandards(nextAll.filter((s) => s.coachId === coach.id));
+      }}
+      onSaveCssTest={(test) => {
+        const next = upsertLocalItem(cssTests, test);
+        setCssTests(next);
+        saveLocalCssTests(next);
+      }}
+      onDeleteCssTest={(id) => {
+        const next = cssTests.filter((t) => t.id !== id);
+        setCssTests(next);
+        saveLocalCssTests(next);
+      }}
+      onSaveRpeLog={(log) => {
+        const next = upsertLocalItem(rpeLogs, log);
+        setRpeLogs(next);
+        saveLocalRpeLogs(next);
+      }}
+      onDeleteRpeLog={(id) => {
+        const next = rpeLogs.filter((l) => l.id !== id);
+        setRpeLogs(next);
+        saveLocalRpeLogs(next);
+      }}
+      onSaveWellness={(entry) => {
+        const next = upsertLocalItem(wellnessEntries, entry);
+        setWellnessEntries(next);
+        saveLocalWellness(next);
+      }}
+      onDeleteWellness={(id) => {
+        const next = wellnessEntries.filter((w) => w.id !== id);
+        setWellnessEntries(next);
+        saveLocalWellness(next);
       }}
       onUpdateCatalog={(next) => {
         setCatalog(next);
@@ -839,12 +1140,20 @@ function LocalApp({
 
 export function App() {
   const hasConvex = Boolean(import.meta.env.VITE_CONVEX_URL);
-  const [session, setSession] = useState<CoachProfile | null>(() => loadSession());
+  const [session, setSession] = useState<AuthSession | null>(() => {
+    const stored = loadSession();
+    // Cloud sessions saved before server-side sessions existed have no token: force a new login.
+    if (stored && hasConvex && !stored.sessionToken) {
+      clearSession();
+      return null;
+    }
+    return stored;
+  });
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     clearSession();
     setSession(null);
-  };
+  }, []);
 
   if (!session) {
     if (hasConvex) {
@@ -897,7 +1206,7 @@ export function App() {
   }
 
   return hasConvex ? (
-    <ConvexApp coach={session} onLogout={handleLogout} />
+    <ConvexApp coach={session} sessionToken={session.sessionToken ?? ''} onLogout={handleLogout} />
   ) : (
     <LocalApp coach={session} onLogout={handleLogout} />
   );

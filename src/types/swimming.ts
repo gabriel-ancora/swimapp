@@ -2,6 +2,10 @@ export type BlockType = 'aquecimento' | 'principal' | 'complementar';
 
 export type ZoneId = 'Z1' | 'Z2' | 'Z3' | 'Z4' | 'Z5' | 'VEL';
 
+export type PoolLength = 25 | 50;
+
+export type AthleteSex = 'M' | 'F';
+
 export interface IntensityZone {
   id: ZoneId;
   code: string;
@@ -72,8 +76,12 @@ export interface Team {
 export interface AthleteEventGoal {
   id: string;
   event: string;
-  bestTime: string;
-  targetTime: string;
+  /** Legacy text field kept optional for backwards compatibility; best times come from `results`. */
+  bestTime?: string;
+  /** Legacy text field kept optional for backwards compatibility. */
+  targetTime?: string;
+  /** Target time in integer centiseconds. */
+  targetTimeCs?: number;
 }
 
 export interface Athlete {
@@ -81,12 +89,115 @@ export interface Athlete {
   teamId: string;
   name: string;
   category: string;
+  sex?: AthleteSex;
   mainEvent: string;
-  bestTime: string;
+  /** Legacy text field; best mark is now derived automatically from `results`. */
+  bestTime?: string;
+  /** Legacy text field; migrated to `targetTimeCs`. */
   targetTime?: string;
+  /** Target time for mainEvent in integer centiseconds. */
+  targetTimeCs?: number;
   events?: AthleteEventGoal[];
   status: AthleteStatus;
   notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SwimResult {
+  id: string;
+  coachId: string;
+  teamId: string;
+  athleteId: string;
+  event: string;
+  poolLength: PoolLength;
+  /** Time in integer centiseconds. */
+  timeCs: number;
+  /** Optional split times in integer centiseconds. */
+  splitsCs?: number[];
+  date: string;
+  competition: string;
+  isOfficial: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type QualifyingOrganization =
+  | 'Estadual'
+  | 'CBDA'
+  | 'Troféu Brasil'
+  | 'Seletiva'
+  | 'Outro';
+
+export interface QualifyingStandard {
+  id: string;
+  coachId: string;
+  name: string;
+  organization: QualifyingOrganization;
+  event: string;
+  category: string;
+  sex?: AthleteSex;
+  poolLength: PoolLength;
+  /** Qualifying time in integer centiseconds. */
+  timeCs: number;
+  season?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CssTest {
+  id: string;
+  coachId: string;
+  teamId: string;
+  athleteId: string;
+  date: string;
+  poolLength: PoolLength;
+  /** 400m test time in integer centiseconds. */
+  t400Cs: number;
+  /** 200m test time in integer centiseconds. */
+  t200Cs: number;
+  /** Critical Swim Speed pace per 100m in integer centiseconds: (t400Cs - t200Cs) / 2. */
+  cssPace100Cs: number;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RpeLog {
+  id: string;
+  coachId: string;
+  teamId: string;
+  athleteId: string;
+  workoutId?: string;
+  date: string;
+  /** Session-RPE on CR-10 scale (0–10). */
+  rpe: number;
+  durationMinutes: number;
+  /** Session load = rpe * durationMinutes (AU). */
+  load: number;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WellnessEntry {
+  id: string;
+  coachId: string;
+  teamId: string;
+  athleteId: string;
+  date: string;
+  /** 1 (worst) to 5 (best). */
+  sleep: number;
+  /** 1 (worst soreness) to 5 (no soreness). */
+  soreness: number;
+  /** 1 (very high stress) to 5 (relaxed). */
+  stress: number;
+  /** 1 (very low mood) to 5 (great mood). */
+  mood: number;
+  /** Sum of sleep + soreness + stress + mood (4–20). */
+  totalScore: number;
+  notes?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -156,7 +267,7 @@ export interface Workout {
   absentAthleteIds?: string[];
   title: string;
   date: string;
-  poolLength: 25 | 50;
+  poolLength: PoolLength;
   objective: string;
   coach: string;
   generalNotes: string;

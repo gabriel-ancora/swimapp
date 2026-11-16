@@ -1,32 +1,50 @@
-# React + TypeScript + Vite
+# RAIA // PRO
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Plataforma para treinadores de natação: montagem de treinos por blocos e zonas de intensidade (Z1–VEL), periodização, gestão de equipes e atletas, painéis analíticos e ficha de treino para impressão.
 
-Currently, two official plugins are available:
+**Stack:** React 19 + Vite + TypeScript no front-end, [Convex](https://convex.dev) como backend (banco em tempo real e funções). Sem `VITE_CONVEX_URL`, o app roda em **modo local** (localStorage, um único dispositivo).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Como rodar
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npx convex dev        # sobe/sincroniza o backend e regenera convex/_generated
+npm run dev           # front-end em http://localhost:5173
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+| Script | O que faz |
+|---|---|
+| `npm run dev` | Servidor de desenvolvimento do Vite |
+| `npm run build` | Type-check + build de produção |
+| `npm run typecheck` | Type-check do app e das funções Convex |
+| `npm test` | Testes (Vitest + convex-test) |
+| `npm run lint` | Oxlint |
+
+## Estrutura
+
+```
+convex/            backend (schema, queries, mutations, actions)
+  lib/session.ts   resolução de sessão e checagem de dono
+  passwords.ts     login/cadastro (Node action: scrypt + tokens aleatórios)
+  auth.ts          sessões, bloqueio por tentativas, logout
+  *.test.ts        testes do backend com convex-test
+src/
+  components/      telas (WorkoutBuilder, PlanningManager, AthleteAnalytics...)
+  domain/          regras puras: datas locais, tempos de prova, erros
+  utils/storage.ts cálculos de treino + persistência do modo local
+  data/            catálogo padrão e treinos de exemplo
+```
+
+## Segurança (modo nuvem)
+
+- Senhas com **scrypt** e salt aleatório por usuário. Contas antigas (SHA-256 com salt fixo) são migradas automaticamente no próximo login.
+- O login cria um **token de sessão** aleatório (validade de 30 dias). O servidor guarda só o hash SHA-256 do token.
+- Toda query e mutation recebe `sessionToken`, e o servidor deduz o treinador a partir dele. O `coachId` enviado pelo cliente é ignorado.
+- Depois de 5 senhas erradas, a conta fica bloqueada por 15 minutos.
+- Cada treinador tem seu próprio catálogo técnico. Excluir uma equipe remove também seus atletas, planos e treinos.
+
+## Convenções
+
+- **Datas** (`YYYY-MM-DD`) usam sempre o dia local: use `todayLocalISO()` / `addDaysISO()` de `src/domain/date.ts`, nunca `toISOString().slice(0, 10)`.
+- **Tempos de prova** são validados e normalizados com `parseSwimTime` / `formatSwimTime` de `src/domain/time.ts`, em centésimos internamente.
+- **Erros para o usuário** saem do backend como `ConvexError('mensagem')`, porque o Convex oculta a mensagem de `Error` comum em produção. No cliente, leia-os com `getErrorMessage()`.

@@ -1,22 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <defs>
-    <clipPath id="brandClip">
-      <rect width="32" height="32" rx="8" />
-    </clipPath>
-  </defs>
-  <g clip-path="url(#brandClip)">
-    <rect width="32" height="32" fill="#0B1220" />
-    <rect x="0" y="28" width="32" height="4" fill="#0057FF" />
-    <g
-      transform="translate(7 6) scale(0.75)"
-      stroke="#FFFFFF"
-      stroke-width="2.3"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />
-      <path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />
-      <path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />
-    </g>
-  </g>
+  <rect width="32" height="32" rx="8" fill="#1E56D9"/>
+  <path d="M7 12.5c2.25 0 2.25-1.5 4.5-1.5s2.25 1.5 4.5 1.5 2.25-1.5 4.5-1.5 2.25 1.5 4.5 1.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M7 20.5c2.25 0 2.25-1.5 4.5-1.5s2.25 1.5 4.5 1.5 2.25-1.5 4.5-1.5 2.25 1.5 4.5 1.5" stroke="#fff" stroke-opacity=".55" stroke-width="2.2" stroke-linecap="round"/>
 </svg>
